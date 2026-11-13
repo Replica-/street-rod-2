@@ -182,6 +182,8 @@ what `../StreetRodEnhanced` already does for the shared engine.
 | E3 | Launcher from `../StreetRodEnhanced/launcher/`: game folder, sound device, switches, window options | S | M |
 | E4 | Gamepad and key bindings, A/Z gear keys option | S | S |
 | E5 | Widescreen / integer scaling options | S | M |
+| E6 | Music option: no ~136 s silence between playlist songs (the original returns the next song's first delay 0 raw, so the countdown wraps; `sr2port/src/sound/mus.c` PORT note) | S | S |
+| E7 | Amiga graphics option: unpack the Amiga release (`Game/amiga/disk1/libstart.p`, `disk2/lib.p`, packed; `tools/unadf.py` extracts the `.adf` disks), decode its pictures and palettes, map them onto the PC LIB1-3 screens | O | L |
 
 ## User tasks (cheap for you, expensive for a model)
 
