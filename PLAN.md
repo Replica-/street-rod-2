@@ -184,6 +184,8 @@ what `../StreetRodEnhanced` already does for the shared engine.
 | E5 | Widescreen / integer scaling options | S | M |
 | E6 | Music option: no ~136 s silence between playlist songs (the original returns the next song's first delay 0 raw, so the countdown wraps; `sr2port/src/sound/mus.c` PORT note) | S | S |
 | E7 | Amiga graphics option: unpack the Amiga release (`Game/amiga/disk1/libstart.p`, `disk2/lib.p`, packed; `tools/unadf.py` extracts the `.adf` disks), decode its pictures and palettes, map them onto the PC LIB1-3 screens | O | L |
+Notes:
+- E7 (2026-11-14): `libstart.p` (66 pictures) and `lib.p` (391) have the PC SR2 LIB directory (u16 count + 28-byte records), **big-endian**; depth 4/5/6 planes (1 for 3 pictures); offsets chain exactly to the file end, `size` is exact (PC: +1). Data has no `0xBC` marker; the PC run scheme (00/FF runs + 16 tokens) gives near but not exact sizes (31 of 457 exact), so the run table or row padding differs: read the unpacker in `STREET_ROD` (68000 hunk exe). First probe: `tools/amilib.py`. Palettes not located yet.
 
 ## User tasks (cheap for you, expensive for a model)
 
