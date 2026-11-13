@@ -1,0 +1,22 @@
+{
+    "version": "2.0.0",
+    "options": {
+        "env": { "PATH": "C:\\msys64\\ucrt64\\bin;${env:PATH}" }
+    },
+    "tasks": [
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "if (-not (Test-Path sr2port/build/build.ninja)) { cmake -S sr2port -B sr2port/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc }; cmake --build sr2port/build",
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "build debug",
+            "type": "shell",
+            "command": "if (-not (Test-Path sr2port/build-debug/build.ninja)) { cmake -S sr2port -B sr2port/build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc }; cmake --build sr2port/build-debug",
+            "group": "build",
+            "problemMatcher": ["$gcc"]
+        }
+    ]
+}

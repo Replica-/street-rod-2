@@ -293,7 +293,11 @@ void host_port61(u8 value)
 u8 host_port61_get(void) { return port61; }
 
 /* PORT: the AdLib chip. A register write is stamped at the emulated time of the writer, like the speaker
- * ports: audio is rendered up to it first, so music is sample-accurate to the PIT timeline. */
+ * ports: audio is rendered up to it first, so music is sample-accurate to the PIT timeline.
+ * Writes go through Nuked's write buffer (2 OPL samples apart, ~the 3.3 + 23 us a real AdLib needs per
+ * write): the driver retriggers a note with key-off and key-on back to back, and a cycle-accurate chip
+ * only sees the key-off if a sample passes in between (else non-sustaining timbres such as the guitars
+ * fade out after their first note). */
 void host_opl_enable(bool on)
 {
     if (on && !opl_on) OPL3_Reset(&opl, AUDIO_RATE);
@@ -304,7 +308,7 @@ void host_opl_write(u8 reg, u8 value)
 {
     if (!opl_on) return;
     render_to(tl_now);
-    OPL3_WriteReg(&opl, reg, value);
+    OPL3_WriteRegBuffered(&opl, reg, value);
 }
 
 void host_speaker(u16 divisor, bool on)
