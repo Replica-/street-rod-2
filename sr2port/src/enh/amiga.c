@@ -61,6 +61,8 @@ static const char *piece_name[PIECES] = { "roof", "rbump", "fbump" };
 static const int piece_flag[PIECES] = { 4, 2, 1 };    /* car_compose flags: 4 chopped roof, 2 rear / 1 front stripped */
 static struct { int x, y; bool has; } piece_at[22][PIECES];
 
+bool amiga_active(void) { return on; }
+
 bool amiga_init(bool enable)
 {
     on = false;

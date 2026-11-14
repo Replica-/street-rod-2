@@ -1,6 +1,7 @@
 /* Paint job and customising (S5.2 / W2b): set_paint_palette 0001:672c, paint_job 6d5e, customize 6edc.
  * From port/spec/garage.md, checked against the disassembly. SR1 base: srport garage_main.c. */
 #include "game/ds_screens.h"
+#include "enh/amiga.h"
 
 /* 0001:672c set_paint_palette: registers 6 / 7 of the EGA palette = PAINT[colour] (DS:4D1E, 3 bytes per colour:
  * reg6, reg7, "See it" strip background), plus the shadow copies of the palette table. Only on EGA/VGA drivers. */
@@ -33,6 +34,8 @@ void paint_job(void)
     s16 b;
     for (;;) {
         ega_set_palreg(12, DSB((u16)(DS_PAINT + 3 * i)));
+        if (amiga_active()) set_paint_palette(i);   /* ENHANCED: the full-colour garage's can keeps its colour: the car
+                                                     * itself shows the paint */
         do b = ui_wait(3000); while (b == 0);
         if (b == 1) { if (--i < 0) i = 5; continue; }
         if (b == 2) { if (++i > 5) i = 0; continue; }
@@ -52,6 +55,7 @@ void paint_job(void)
     }
     ui_pop(1);
     ega_set_palreg(12, DSB((u16)(DS_PAINT + 3 * DSC((u16)(gs_cur_car() + CR_COLOUR)))));   /* restore the sample colour */
+    if (amiga_active()) set_paint_palette(DSC((u16)(gs_cur_car() + CR_COLOUR)));          /* ENHANCED: and the car */
     screen_put_bitmap_mirror(bg, x, y);
     arena_pop(1);
 }

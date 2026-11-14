@@ -7,6 +7,8 @@
 
 /* Loads the picture set from gfx/ when enable; false (the game's own colours) if it is missing. */
 bool amiga_init(bool enable);
+/* true while the full-colour picture set is in use */
+bool amiga_active(void);
 /* pic_get: bitmap bmp now holds picture id. */
 void amiga_note_pic(FarPtr bmp, s16 id);
 /* around a blit (drv_blit / drv_blit_masked) of src onto dst: the full-colour pixels of what it draws */
