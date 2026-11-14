@@ -42,8 +42,10 @@ u32  amiga_swatch_rgb(int i);
 void amiga_paint_set(u16 car, int index, u32 rgb);
 void amiga_paint_apply(u16 car, int index);
 void amiga_paint_preview(u32 rgb, int index);
-/* the race's steering wheel picture w (0 straight, 1 turned left, 2 turned right; -1 = the race is over): the driver's
- * hands, a layer in front of the dashboard (the split screen's rows below the race view); the layer (320 x 90,
- * 0xAARRGGBB, alpha 0 = none) or NULL */
-void amiga_hands(int w);
+/* the race's steering wheel picture w (0 straight, 1 turned left, 2 turned right; -1 = the race is over) and wheel
+ * angle (-24..24): the driver's hands and the wheel's knob (gliding to the angle), a layer in front of the dashboard
+ * (the split screen's rows below the race view); the layer (320 x 90, 0xAARRGGBB, alpha 0 = none) or NULL, made for
+ * now; true while the knob is still moving (the screen is to be shown again) */
+void amiga_hands(int w, int angle);
 const u32 *amiga_hands_layer(void);
+bool amiga_hands_moving(void);

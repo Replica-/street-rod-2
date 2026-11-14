@@ -52,7 +52,7 @@ static bool blanked[16];
 
 static bool compose(u32 *xrgb)
 {
-    if (!dirty) return false;
+    if (!dirty && !amiga_hands_moving()) return false;   /* ENHANCED (--amiga): the steering wheel's knob gliding */
     dirty = false;
     u32 rgb[16];
     for (int i = 0; i < 16; i++) {
@@ -98,7 +98,13 @@ static bool compose(u32 *xrgb)
                     u32 v = sh[(u32)o * 8 + (u32)(7 - bit)];
                     if (v > SH_THROUGH) px = sh_colour(v, rgb);
                 }
-                if (hr && hr[b * 8 + 7 - bit] >> 24) px = hr[b * 8 + 7 - bit];
+                if (hr && hr[b * 8 + 7 - bit] >> 24) {
+                    u32 h = hr[b * 8 + 7 - bit], a = h >> 24;
+                    if (a == 255) px = h;
+                    else px = 0xFF000000u | (((h >> 16 & 255) * a + (px >> 16 & 255) * (255 - a)) / 255) << 16 |
+                              (((h >> 8 & 255) * a + (px >> 8 & 255) * (255 - a)) / 255) << 8 |
+                              ((h & 255) * a + (px & 255) * (255 - a)) / 255;
+                }
                 if (m && m[b * 8 + 7 - bit] && (!fill_only || c == 15)) px &= 0x00FFFFFFu;
                 *out++ = px;
             }

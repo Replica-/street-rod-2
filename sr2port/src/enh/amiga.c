@@ -739,14 +739,75 @@ void amiga_paint_preview(u32 rgb, int index)
 
 /* ---------------------------------------------------------------- the driver's hands */
 
-static Img hands_img[3];
-static int hands_w = -1;
+/* The steering wheel's knob: the game draws a 5 x 5 dot at its knob table's place for the wheel angle (-24..24), moved
+ * a step when the angle changes; here a round knob that glides along the same path to the angle, behind the hands. */
+#define DS_knob_xy 0x1C80           /* {u8 x, u8 y} for wheel angle w = -24..24 (race_dash.c) */
+#define KNOB_EASE_S 0.06f           /* seconds: how fast the knob catches up with the wheel */
+#define KNOB_MAX_SPEED 150.0f       /* wheel angle units a second at most (lock to lock in a third of a second) */
 
-void amiga_hands(int w)
+static Img hands_img[3];
+static int hands_w = -1, knob_to;
+static float knob_at;
+static Uint64 knob_t;
+static u32 layer[320 * 90];
+
+void amiga_hands(int w, int angle)
 {
-    if (!on || w == hands_w) return;
+    if (!on) return;
+    if (angle < -24) angle = -24;
+    if (angle > 24) angle = 24;
+    if (hands_w < 0) knob_at = (float)angle;     /* a new race: the knob starts where the wheel is */
+    if (w == hands_w && angle == knob_to) return;
     hands_w = w;
+    if (angle != knob_to && !amiga_hands_moving()) knob_t = SDL_GetTicksNS();   /* the glide starts now */
+    knob_to = angle;
     ega_touch();
+}
+
+bool amiga_hands_moving(void)
+{
+    return on && hands_w >= 0 && SDL_fabsf((float)knob_to - knob_at) > 0.01f;
+}
+
+static void knob_xy(float w, float *x, float *y)
+{
+    int i = (int)SDL_floorf(w);
+    if (i < -24) i = -24;
+    if (i > 23) i = 23;
+    float f = w - (float)i;
+    u16 a = (u16)(DS_knob_xy + 2 * i), b = (u16)(a + 2);
+    *x = (float)DSB(a) + ((float)DSB(b) - (float)DSB(a)) * f;
+    *y = (float)DSB((u16)(a + 1)) + ((float)DSB((u16)(b + 1)) - (float)DSB((u16)(a + 1))) * f;
+}
+
+/* a red ball of radius 2.6 centred at (cx, cy) (pixel centres at + 0.5), 4 x 4 samples a pixel, lit from the top left */
+static void knob_draw(float cx, float cy)
+{
+    const float r = 2.6f;
+    for (int y = (int)(cy - r) - 1; y <= (int)(cy + r) + 1; y++)
+        for (int x = (int)(cx - r) - 1; x <= (int)(cx + r) + 1; x++) {
+            if (x < 0 || x >= 320 || y < 0 || y >= 90) continue;
+            int in = 0;
+            for (int sy = 0; sy < 4; sy++)
+                for (int sx = 0; sx < 4; sx++) {
+                    float dx = (float)x + (sx + 0.5f) / 4 - cx, dy = (float)y + (sy + 0.5f) / 4 - cy;
+                    in += dx * dx + dy * dy <= r * r;
+                }
+            if (!in) continue;
+            float dx = (float)x + 0.5f - cx, dy = (float)y + 0.5f - cy;
+            float lit = 1.0f - SDL_sqrtf((dx + 1.0f) * (dx + 1.0f) + (dy + 1.0f) * (dy + 1.0f)) / (2.0f * r);
+            if (lit < 0) lit = 0;
+            int R = (int)(150 + 105 * lit), G = (int)(20 + 110 * lit * lit), B = (int)(20 + 110 * lit * lit);
+            u32 bg = layer[y * 320 + x];
+            int a = in * 255 / 16;
+            if (bg >> 24) {                                   /* over what is there (the layer is still empty) */
+                R = (R * a + (int)(bg >> 16 & 255) * (255 - a)) / 255;
+                G = (G * a + (int)(bg >> 8 & 255) * (255 - a)) / 255;
+                B = (B * a + (int)(bg & 255) * (255 - a)) / 255;
+                a = 255;
+            }
+            layer[y * 320 + x] = (u32)a << 24 | (u32)R << 16 | (u32)G << 8 | (u32)B;
+        }
 }
 
 const u32 *amiga_hands_layer(void)
@@ -755,5 +816,20 @@ const u32 *amiga_hands_layer(void)
     char name[32];
     SDL_snprintf(name, sizeof name, "hands_%d.bmp", hands_w);
     Img *im = &hands_img[hands_w];
-    return load_img(im, name) && im->w == 320 && im->h == 90 ? im->px : NULL;
+    if (!load_img(im, name) || im->w != 320 || im->h != 90) return NULL;
+    Uint64 now = SDL_GetTicksNS();
+    float dt = knob_t ? (float)(now - knob_t) / 1e9f : 0.0f;
+    knob_t = now;
+    if (dt > 0.1f) dt = 0.1f;
+    float step = ((float)knob_to - knob_at) * (1.0f - SDL_expf(-dt / KNOB_EASE_S));
+    if (SDL_fabsf(step) > KNOB_MAX_SPEED * dt) step = step > 0 ? KNOB_MAX_SPEED * dt : -KNOB_MAX_SPEED * dt;
+    knob_at += step;
+    if (SDL_fabsf((float)knob_to - knob_at) <= 0.01f) knob_at = (float)knob_to;
+    memset(layer, 0, sizeof layer);
+    float kx, ky;
+    knob_xy(knob_at, &kx, &ky);
+    knob_draw(kx + 0.5f, ky + 0.5f);
+    for (int i = 0; i < 320 * 90; i++)
+        if (im->px[i] >> 24) layer[i] = im->px[i];          /* the hands in front */
+    return layer;
 }

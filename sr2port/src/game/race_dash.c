@@ -11,6 +11,7 @@
  * of the needle areas (x 0x108, rows 0x66 + 5 / 0x0C / 0x23) and the shifter cut-outs; the wheel pictures are in
  * page 2 (DS:ADA2) rows 102 / 132 / 162. All angles go through sin256_far (0dcb:031a). */
 #include "game/race_int.h"
+#include "enh/amiga.h"
 #include "game/race.h"
 #include "game/flow.h"
 
@@ -254,7 +255,7 @@ void wheel_draw(s16 nw, s16 old, FarPtr dst)
     clip_set_ymin0();
     s16 ymax = 0, ymin = 0;
     if (!vga()) { ymax = DSS(DS_clip_ymax); ymin = DSS(DS_clip_ymin); DSS(DS_clip_ymax) = 0xBE; DSS(DS_clip_ymin) = 100; }
-    shape_draw_dot(x, y);
+    if (!amiga_active()) shape_draw_dot(x, y);   /* ENHANCED (--amiga): the knob glides there instead (enh/amiga.c) */
     if (!vga()) { DSS(DS_clip_ymax) = ymax; DSS(DS_clip_ymin) = ymin; }
     clip_set_view();
     DSW(DS_draw_off) = o;

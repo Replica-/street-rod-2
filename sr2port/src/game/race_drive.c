@@ -335,7 +335,7 @@ s16 race_run(void)
         DSS(DS_wheel_shown) = 100;
         wheel_load();
         wheel_draw(0, DSS(DS_wheel_shown), ds_far(DS_page0_ptr));
-        amiga_hands(0);                                    /* ENHANCED (--amiga): the driver's hands */
+        amiga_hands(0, 0);                                 /* ENHANCED (--amiga): the driver's hands */
         DSS(DS_wheel_shown) = 0;
         if (MODE == 8) race_load_graphics_rot();
         else road_load_graphics();
@@ -393,10 +393,10 @@ s16 race_run(void)
         if (DSS(DS_wheel_shown) != w) {
             wheel_draw(w, DSS(DS_wheel_shown), ds_far(DS_page0_ptr));
             DSS(DS_wheel_shown) = w;
-            amiga_hands((w != 0) + (w > 0));               /* ENHANCED (--amiga): turning it as wheel_draw's picture */
+            amiga_hands((w != 0) + (w > 0), w);            /* ENHANCED (--amiga): turning it as wheel_draw's picture */
         }
     }
-    amiga_hands(-1);
+    amiga_hands(-1, 0);
     if (getenv("SR_TRACE")) fprintf(stderr, "trace: %ldms race_run end %d seg %d opp %d\n", (long)clock(), res, DSS(DS_seg), DSS(DS_opp_seg));   /* PORT: developer aid */
     arena_reset();
     DSW(DS_arena2_used) = 0;
