@@ -2,6 +2,7 @@
  * ending after beating the King) and the Grudge Night message patching — port/spec/game_flow.md
  * (0001:3378-36ac, 0001:a51c, 0001:b2ea / b356, 2925:2714 / 27da). Delta port of SR1 flow_end.c. */
 #include "game/flow.h"
+#include "game/game.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -23,7 +24,9 @@ static inline bool is_ega_family(void)
 /* 0001:3378 copy_protection: a manual-lookup question whose answer is never checked; always returns 1.
  * Quirk of the original (kept): the `jne` after ui_edit (0001:345C) targets the middle of the next instruction, so any
  * result other than -0x14 (Esc / cancel) leaves the stack unbalanced and crashes at the `retf`; the port returns 1 for
- * every result. The "answered" mark is a word store at e + 3 (the letter byte and the next entry's n byte). */
+ * every result. The "answered" mark is a word store at e + 3 (the letter byte and the next entry's n byte).
+ * PORT: user decision 2026-11-14: the question is skipped (it accepts any answer anyway) unless --protection;
+ * everything around it (black screen, palette, flags, the random draw) still happens. */
 s16 copy_protection(void)
 {
     cursor_ctl(-2);
@@ -33,6 +36,10 @@ s16 copy_protection(void)
     DSB(DS_g_pal_visible) = 1;
     DSW(DS_g_mirror) = 1;
     s16 i = rnd(0x18);
+    if (!game_show_protection) {
+        status_print(-1, ds_str(DS_empty_string), 0);
+        return 1;
+    }
     u16 e = (u16)(DS_protection_table + 4 * i);     /* 24 entries {n (word number), page, line, letter} */
     char text[0x60];
     snprintf(text, sizeof text, ds_str(DS_prot_fmt), (s16)(s8)DSB(e), (s16)(s8)DSB((u16)(e + 2)), (s16)(s8)DSB((u16)(e + 1)));

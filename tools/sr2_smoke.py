@@ -18,10 +18,14 @@ PLAIN = ["v"]
 
 # name: dict(env, args, keys, cap seconds, markers (regexes that must be in the log), must_finish)
 PATHS = {
-    # title -> protection question -> new game (licence name) -> newspaper -> classifieds
-    "title_new": dict(args=PLAIN, env={"SR_SEED": "3"}, cap=48,
+    # title -> protection question (--protection; skipped by default) -> new game (licence name) -> newspaper -> classifieds
+    "title_new": dict(args=PLAIN + ["--protection"], env={"SR_SEED": "3"}, cap=48,
                       keys=["25:1e", "26:1c", "30:30", "31:18", "32:30", "33:1c", "36:c154.51"],
                       markers=[r"ui_push screen 31\b", r"ui_push screen 2\b", r"ui_push screen 3\b", r"ui_push screen 4\b"]),
+    # the default start: title -> new game (licence name, no protection question) -> newspaper -> classifieds
+    "title_skip": dict(args=PLAIN, env={"SR_SEED": "3"}, cap=48,
+                       keys=["30:30", "31:18", "32:30", "33:1c", "36:c154.51"],
+                       markers=[r"ui_push screen 2\b", r"ui_push screen 3\b", r"ui_push screen 4\b"]),
     # the demo player: the bag of 17 garage codes (all sub-screens), newspaper, classifieds, used cars, gas, Bob's, races
     "demo_tour": dict(args=DEMO, env={"SR_SEED": "11"}, cap=420,
                       markers=[r"ui_push screen 3\b", r"ui_push screen 4\b", r"race_run mode"]),

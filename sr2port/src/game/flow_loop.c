@@ -20,6 +20,7 @@
 #include <time.h>
 #include <stdlib.h>
 
+bool game_show_protection;                         /* PORT: user decision 2026-11-14, main.c --protection */
 int game_run_ms;                                  /* developer aid (main.c --run-ms N): quit after N ms */
 
 /* clock_hour() = `game_clock += 0x222` (flow.h): every trip costs two game hours, the newspaper one */

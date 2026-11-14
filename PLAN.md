@@ -311,6 +311,7 @@ Several bugs in one message; one session then fixes them in a batch.
 6. **Game tick while AdLib music plays**: the original runs the game ISR at 68.6 Hz (tempo 120) / 60 Hz (tempo 60) instead of 72.8 Hz, because the music ISR chains it with the remainder discarded (sound.md §9). Reproduce it (faithful)? Default: yes.
 
 ## Decisions
+- 2026-11-14 (user): the copy protection question is skipped (it accepts any answer); `--protection` shows it. Its surroundings (black screen, palette, flags, the rnd(24) draw) still run, so the random sequence is unchanged (`game/flow_end.c`). Smoke: `title_skip` (default) and `title_new` (with --protection).
 - 2026-11-14 (user): the 3D race view and the effects live in this repo, not a separate one (the temporary `street-rod-2-enhanced` clone was merged back). Game logic stays faithful; `--classic` = original races.
 - 2026-11-14 (user): no start-up video and sound menus: without switches the port starts in VGA with AdLib (`platform/startup.c`, `PORT: user decision`); the switches still choose. Replaces the 2026-10-10 rule below that keeps the text menus.
 - 2026-10-10 (user): launcher in the faithful repo, like the SR1 port: video and sound choices move into it (`sr2port/launcher`, `-DSR2_LAUNCHER=AUTO|ON|OFF`, wxWidgets 3.2); `sr2port` without the new `adlib`/`speaker` switches keeps the original text menus.
