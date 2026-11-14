@@ -34,6 +34,8 @@ void ega_set_page_mask(int page, const u8 *mask);   /* ENHANCED: 320x200 see-thr
 void ega_add_backdrop(u8 *ref, u32 *rgb, int page, int x, int y, int w, int h, int flags);
 void ega_copy_backdrops(int spage, int sx, int sy, int w, int h, int dpage, int dx, int dy);
 void ega_drop_backdrops(int page, int x, int y, int w, int h);
+/* ENHANCED: where the mouse pointer is drawn (w = 0: none); its pixels do not decide whether a backdrop is on screen */
+void ega_pointer_rect(int x, int y, int w, int h);
 
 /* Palette register 0..15 = value as the attribute controller holds it: bits 0-2 = BGR, bit 4 =
  * intensity (the 200-line interpretation of mode 0Dh; the game ORs 10h into values 8..15), register 16 =

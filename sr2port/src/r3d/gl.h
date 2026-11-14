@@ -50,7 +50,8 @@ typedef void (APIENTRYP PFNGLREADPIXELSPROC)(GLint x, GLint y, GLsizei w, GLsize
     X(FRAMEBUFFERTEXTURE2D, FramebufferTexture2D) X(GENRENDERBUFFERS, GenRenderbuffers) \
     X(DELETERENDERBUFFERS, DeleteRenderbuffers) X(BINDRENDERBUFFER, BindRenderbuffer) \
     X(RENDERBUFFERSTORAGE, RenderbufferStorage) X(FRAMEBUFFERRENDERBUFFER, FramebufferRenderbuffer) \
-    X(CHECKFRAMEBUFFERSTATUS, CheckFramebufferStatus) X(BLITFRAMEBUFFER, BlitFramebuffer)
+    X(CHECKFRAMEBUFFERSTATUS, CheckFramebufferStatus) X(BLITFRAMEBUFFER, BlitFramebuffer) \
+    X(RENDERBUFFERSTORAGEMULTISAMPLE, RenderbufferStorageMultisample)
 
 #define R3D_GL_MEMBER(UP, name) PFNGL##UP##PROC name;
 typedef struct { R3D_GL_FUNCS(R3D_GL_MEMBER) } R3dGl;

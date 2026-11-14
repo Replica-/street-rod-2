@@ -131,8 +131,16 @@ void ega_copy_backdrops(int spage, int sx, int sy, int w, int h, int dpage, int 
  * colour (plain black sky) proves nothing on its own: it follows the region, which counts when at least a third of its
  * patterned tiles do (another screen with the same black area shows nothing of it). The pixels under a full-colour
  * car do not count for the other regions: the car covers them, they have not left the screen (a tile wholly under the
- * car follows its region; each pixel is still drawn only where the screen shows the picture). */
+ * car follows its region; each pixel is still drawn only where the screen shows the picture). Nor do the pixels under
+ * the mouse pointer (ega_pointer_rect). */
 #define TS 16
+static struct { int x, y, w, h; } pointer;
+
+void ega_pointer_rect(int x, int y, int w, int h)
+{
+    pointer.x = x; pointer.y = y; pointer.w = w; pointer.h = h;
+}
+
 /* ENHANCED: a register switched from a colour to black (the game blanking a screen before it leaves): the full-colour
  * backdrops go black there too */
 static bool blanked[16];
@@ -159,6 +167,7 @@ static void apply_backdrops(u32 *xrgb)
     }
     enum { TMAX = (320 / TS + 1) * (256 / TS + 1) };
     static int seen[TMAX], same[TMAX], hid[TMAX];
+    int ptr_x = pointer.x, ptr_y = pointer.y, ptr_w = pointer.w, ptr_h = pointer.h;
     static u8 under_car[320 * 200];
     memset(under_car, 0, sizeof under_car);
 #define RY(yy) ((ppage[yy] == bd[r].page) ? prow[yy] - bd[r].y : -1)
@@ -192,6 +201,8 @@ static void apply_backdrops(u32 *xrgb)
                 if (q >= 0xFE) continue;
                 int t = (ry / TS) * tw + x / TS;
                 if (!bd[r].car && under_car[y * 320 + bd[r].x + x]) { hid[t]++; continue; }
+                int sx = bd[r].x + x;
+                if (sx >= ptr_x && sx < ptr_x + ptr_w && y >= ptr_y && y < ptr_y + ptr_h) { hid[t]++; continue; }
                 seen[t]++;
                 same[t] += idx[y * 320 + bd[r].x + x] == q;
             }

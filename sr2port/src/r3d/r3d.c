@@ -17,13 +17,17 @@ static SDL_GLContext ctx;
 static GLuint frame_tex, frame_prog, vao;
 static GLint frame_loc_tex, frame_loc_keyed;
 static GLuint fbo, fbo_tex, fbo_depth;
+static GLuint ms_fbo, ms_colour, ms_depth;   /* ENHANCED: the 3D view drawn 4x multisampled (no shimmering thin lines) */
 static int fbo_w, fbo_h;
 static int tex_w, tex_h;
 static bool classic;
 
-/* views pushed by the race code (r3d_view_push) and their display times */
-static R3dView view_prev, view_last;
-static Uint64 t_prev, t_last;
+/* views pushed by the race code (r3d_view_push) and their times: a ring of the last VIEW_HIST */
+#define VIEW_HIST 8
+static R3dView view_hist[VIEW_HIST];
+static Uint64 t_hist[VIEW_HIST];
+static Uint64 t_last;
+static double push_gap_ns;                   /* smoothed time between pushes */
 static int views;
 
 static bool load(void)
@@ -133,7 +137,10 @@ static void fbo_free(void)
     if (fbo) gl.DeleteFramebuffers(1, &fbo);
     if (fbo_tex) gl.DeleteTextures(1, &fbo_tex);
     if (fbo_depth) gl.DeleteRenderbuffers(1, &fbo_depth);
-    fbo = fbo_tex = fbo_depth = 0;
+    if (ms_fbo) gl.DeleteFramebuffers(1, &ms_fbo);
+    if (ms_colour) gl.DeleteRenderbuffers(1, &ms_colour);
+    if (ms_depth) gl.DeleteRenderbuffers(1, &ms_depth);
+    fbo = fbo_tex = fbo_depth = ms_fbo = ms_colour = ms_depth = 0;
     fbo_w = fbo_h = 0;
 }
 
@@ -154,6 +161,23 @@ static void fbo_size(int w, int h)
     gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fbo_tex, 0);
     gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, fbo_depth);
     if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) fprintf(stderr, "r3d: framebuffer incomplete\n");
+    gl.GenRenderbuffers(1, &ms_colour);
+    gl.BindRenderbuffer(GL_RENDERBUFFER, ms_colour);
+    gl.RenderbufferStorageMultisample(GL_RENDERBUFFER, 4, GL_RGBA8, w, h);
+    gl.GenRenderbuffers(1, &ms_depth);
+    gl.BindRenderbuffer(GL_RENDERBUFFER, ms_depth);
+    gl.RenderbufferStorageMultisample(GL_RENDERBUFFER, 4, GL_DEPTH_COMPONENT24, w, h);
+    gl.GenFramebuffers(1, &ms_fbo);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, ms_fbo);
+    gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, ms_colour);
+    gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, ms_depth);
+    if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {    /* no multisampling: draw directly */
+        gl.DeleteFramebuffers(1, &ms_fbo);
+        gl.DeleteRenderbuffers(1, &ms_colour);
+        gl.DeleteRenderbuffers(1, &ms_depth);
+        ms_fbo = ms_colour = ms_depth = 0;
+    }
+    gl.BindFramebuffer(GL_FRAMEBUFFER, fbo);
     fbo_w = w;
     fbo_h = h;
 }
@@ -192,12 +216,18 @@ void r3d_view_push(const R3dView *v)
 {
     Uint64 now = SDL_GetTicksNS();
     if (views == 0 || now - t_last > VIEW_LIVE_NS) views = 0;      /* a new race view: no blend with an old one */
-    view_prev = views ? view_last : *v;
-    t_prev = views ? t_last : now;
-    view_last = *v;
+    if (views) {
+        double gap = (double)(now - t_last);
+        push_gap_ns = views == 1 ? gap : push_gap_ns * 0.9 + gap * 0.1;
+    }
+    view_hist[views % VIEW_HIST] = *v;
+    t_hist[views % VIEW_HIST] = now;
     t_last = now;
     views++;
 }
+
+/* the i-th newest view (0 = the last pushed) */
+static int hist_at(int i) { return (views - 1 - i) % VIEW_HIST; }
 
 bool r3d_view_live(void)
 {
@@ -209,17 +239,23 @@ static float blend(float a, float b, float t, float snap)
     return fabsf(b - a) > snap ? b : a + (b - a) * t;
 }
 
-/* The view for the display time: one original frame behind, blended between the last two pushes. */
+/* The view for the display time: a steady delay (1.5 x the smoothed time between pushes) behind now, blended between
+ * the two pushes around it, so pushes that come unevenly do not make the motion stall and jump. */
 static R3dView view_now(void)
 {
-    R3dView v = view_last;
+    R3dView v = view_hist[hist_at(0)];
     if (views < 2) return v;
-    Uint64 now = SDL_GetTicksNS();
-    double span = (double)(t_last - t_prev);
-    if (span < 1e6) return v;
-    float t = (float)((double)(now - t_last) / span);
+    double delay = push_gap_ns * 1.5;
+    if (delay < 10e6) delay = 10e6;
+    if (delay > 150e6) delay = 150e6;
+    double tr = (double)SDL_GetTicksNS() - delay;
+    int n = views < VIEW_HIST ? views : VIEW_HIST, k = 1;
+    while (k < n - 1 && (double)t_hist[hist_at(k)] > tr) k++;   /* k: the newest push at or before tr */
+    const R3dView *a = &view_hist[hist_at(k)], *b = &view_hist[hist_at(k - 1)];
+    double ta = (double)t_hist[hist_at(k)], tb = (double)t_hist[hist_at(k - 1)];
+    float t = tb > ta ? (float)((tr - ta) / (tb - ta)) : 1.0f;
+    if (t < 0) t = 0;
     if (t > 1) t = 1;
-    const R3dView *a = &view_prev, *b = &view_last;
     v.pos = blend(a->pos, b->pos, t, 8.0f);              /* a jump of more than 8 segments is a reset */
     v.cam_x = blend(a->cam_x, b->cam_x, t, 1500.0f);
     v.cam_y = blend(a->cam_y, b->cam_y, t, 1500.0f);
@@ -291,6 +327,10 @@ void r3d_present(const uint32_t *frame, int fw, int fh)
 
     bool live = r3d_view_live() && fw == 320 && fh == 200;
     if (live) {
+        if (ms_fbo) {
+            gl.BindFramebuffer(GL_FRAMEBUFFER, ms_fbo);
+            gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        }
         int y0 = h * VIEW_TOP / 200, y1 = h * VIEW_BOTTOM / 200;
         gl.Viewport(0, h - y1, w, y1 - y0);
         gl.Enable(GL_SCISSOR_TEST);
@@ -310,6 +350,12 @@ void r3d_present(const uint32_t *frame, int fw, int fh)
         gl.Disable(GL_DEPTH_TEST);
         gl.Disable(GL_SCISSOR_TEST);
         gl.Viewport(0, 0, w, h);
+        if (ms_fbo) {                                           /* resolve into the picture */
+            gl.BindFramebuffer(GL_READ_FRAMEBUFFER, ms_fbo);
+            gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
+            gl.BlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            gl.BindFramebuffer(GL_FRAMEBUFFER, fbo);
+        }
     }
 
     gl.ActiveTexture(GL_TEXTURE0);
