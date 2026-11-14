@@ -50,7 +50,7 @@ void ega_set_page_mask(int page, const u8 *mask)
  * storage into the view, back page -> front page), any blit drops the regions it covers. The composer shows the
  * replacement where the screen still shows the reference pixel (and its 4 neighbours do too, so things drawn on top in
  * the picture's own colour stay the game's), only while most of the visible region matches. Newest last (on top). */
-#define BD_MAX 128
+#define BD_MAX 256
 static struct { u8 *ref; u32 *rgb; int page, x, y, w, h; bool strict, car; } bd[BD_MAX];   /* strict: 4-neighbour rule */
 static int bd_n;
 
@@ -98,31 +98,39 @@ void ega_add_backdrop(u8 *ref, u32 *rgb, int page, int x, int y, int w, int h, i
 
 void ega_copy_backdrops(int spage, int sx, int sy, int w, int h, int dpage, int dx, int dy)
 {
+    /* a region goes along only when the copy takes (nearly) all of it: a page flip copy, a screen moved from the
+     * back page; the animation's background repairs and the pointer's save-under copy scraps and are ignored */
     struct { u8 *ref; u32 *rgb; int x, y, w, h, flags; } add[BD_MAX];
     int na = 0;
-    for (int i = 0; i < bd_n && na < BD_MAX; i++) {             /* the parts of src regions inside the copied rect */
+    for (int i = 0; i < bd_n && na < BD_MAX; i++) {
         if (bd[i].page != spage) continue;
         int x0 = bd[i].x > sx ? bd[i].x : sx, y0 = bd[i].y > sy ? bd[i].y : sy;
         int x1 = bd[i].x + bd[i].w < sx + w ? bd[i].x + bd[i].w : sx + w;
         int y1 = bd[i].y + bd[i].h < sy + h ? bd[i].y + bd[i].h : sy + h;
         if (x1 <= x0 || y1 <= y0) continue;
-        int cw = x1 - x0, ch = y1 - y0;
-        u8 *r = malloc((size_t)cw * ch);
-        u32 *c = malloc((size_t)cw * ch * sizeof(u32));
+        if ((long)(x1 - x0) * (y1 - y0) * 10 < (long)bd[i].w * bd[i].h * 9) continue;
+        int nx = dx + (bd[i].x - sx), ny = dy + (bd[i].y - sy);
+        if (nx < 0 || ny < 0 || nx + bd[i].w > 320) continue;
+        size_t n = (size_t)bd[i].w * bd[i].h;
+        u8 *r = malloc(n);
+        u32 *c = malloc(n * sizeof(u32));
         if (!r || !c) { free(r); free(c); continue; }
-        for (int yy = 0; yy < ch; yy++) {
-            int o = (y0 - bd[i].y + yy) * bd[i].w + (x0 - bd[i].x);
-            memcpy(r + yy * cw, bd[i].ref + o, (size_t)cw);
-            memcpy(c + yy * cw, bd[i].rgb + o, (size_t)cw * sizeof(u32));
-        }
-        add[na].ref = r; add[na].rgb = c; add[na].x = dx + (x0 - sx); add[na].y = dy + (y0 - sy);
-        add[na].w = cw; add[na].h = ch; add[na].flags = (bd[i].strict ? BD_STRICT : 0) | (bd[i].car ? BD_CAR : 0) | BD_COPY; na++;
+        memcpy(r, bd[i].ref, n);
+        memcpy(c, bd[i].rgb, n * sizeof(u32));
+        add[na].ref = r; add[na].rgb = c; add[na].x = nx; add[na].y = ny; add[na].w = bd[i].w; add[na].h = bd[i].h;
+        add[na].flags = (bd[i].strict ? BD_STRICT : 0) | (bd[i].car ? BD_CAR : 0);
+        na++;
     }
     ega_drop_backdrops(dpage, dx, dy, w, h);                    /* overwritten */
     for (int a = 0; a < na; a++)
         ega_add_backdrop(add[a].ref, add[a].rgb, dpage, add[a].x, add[a].y, add[a].w, add[a].h, add[a].flags);
 }
 
+/* Is a region on screen? Per 16 x 16 tile of the region: a tile counts when at least 60 % of its picture pixels are
+ * on screen unchanged, so a dialog over part of a backdrop only switches off the tiles under it. A tile of a single
+ * colour (plain black sky) proves nothing on its own: it follows the region, which counts when at least a third of its
+ * patterned tiles do (another screen with the same black area shows nothing of it). */
+#define TS 16
 static void apply_backdrops(u32 *xrgb)
 {
     if (!bd_n) return;
@@ -140,20 +148,45 @@ static void apply_backdrops(u32 *xrgb)
                                     (planes[2][o] >> bit & 1) << 2 | (planes[3][o] >> bit & 1) << 3);
         }
     }
+    enum { TMAX = (320 / TS + 1) * (256 / TS + 1) };
+    static int seen[TMAX], same[TMAX];
+    static u16 cmask[TMAX];
+    static bool pass[TMAX];
 #define RY(yy) ((ppage[yy] == bd[r].page) ? prow[yy] - bd[r].y : -1)
     for (int r = 0; r < bd_n; r++) {
-        int same = 0, seen = 0, W = bd[r].w;
+        int W = bd[r].w, tw = (W + TS - 1) / TS, th = (bd[r].h + TS - 1) / TS, nt = tw * th;
+        if (nt > TMAX) continue;
+        memset(seen, 0, sizeof(int) * (size_t)nt);
+        memset(same, 0, sizeof(int) * (size_t)nt);
+        memset(cmask, 0, sizeof(u16) * (size_t)nt);
+        for (int ry = 0; ry < bd[r].h; ry++)                    /* which colours each tile of the picture has */
+            for (int x = 0; x < W; x++) {
+                u8 q = bd[r].ref[ry * W + x];
+                if (q < 16) cmask[(ry / TS) * tw + x / TS] |= (u16)(1u << q);
+            }
         for (int y = 0; y < 200; y++) {
             int ry = RY(y);
             if (ry < 0 || ry >= bd[r].h) continue;
             for (int x = 0; x < W; x++) {
                 u8 q = bd[r].ref[ry * W + x];
                 if (q >= 0xFE) continue;
-                seen++;
-                same += idx[y * 320 + bd[r].x + x] == q;
+                int t = (ry / TS) * tw + x / TS;
+                seen[t]++;
+                same[t] += idx[y * 320 + bd[r].x + x] == q;
             }
         }
-        if (!seen || same * 10 < seen * 6) continue;           /* under 60 %: not on screen */
+        int patterned = 0, patterned_ok = 0, any_seen = 0;
+        for (int t = 0; t < nt; t++) {
+            bool uniform = (cmask[t] & (cmask[t] - 1)) == 0;
+            pass[t] = seen[t] > 0 && same[t] * 10 >= seen[t] * 6;
+            any_seen += seen[t];
+            if (!uniform && seen[t] > 0) { patterned++; patterned_ok += pass[t]; }
+        }
+        if (!any_seen) continue;
+        bool region_ok = patterned ? patterned_ok * 3 >= patterned : true;
+        if (!region_ok) continue;
+        for (int t = 0; t < nt; t++)
+            if ((cmask[t] & (cmask[t] - 1)) == 0 && !region_ok) pass[t] = false;
         for (int y = 0; y < 200; y++) {
             int ry = RY(y);
             if (ry < 0 || ry >= bd[r].h) continue;
@@ -162,13 +195,13 @@ static void apply_backdrops(u32 *xrgb)
                 int sx = bd[r].x + x;
                 u8 q = bd[r].ref[ry * W + x];
                 if (q == 0xFE) { xrgb[y * 320 + sx] = bd[r].rgb[ry * W + x]; continue; }    /* always (overhang) */
-                if (q == 0xFF || idx[y * 320 + sx] != q) continue;
-                bool ok = true;                                 /* the 4 neighbours (screen) still the picture */
-                if (bd[r].strict) {
-                if (x > 0 && bd[r].ref[ry * W + x - 1] < 0xFE && idx[y * 320 + sx - 1] != bd[r].ref[ry * W + x - 1]) ok = false;
-                if (x + 1 < W && bd[r].ref[ry * W + x + 1] < 0xFE && idx[y * 320 + sx + 1] != bd[r].ref[ry * W + x + 1]) ok = false;
-                if (ryu == ry - 1 && ryu >= 0 && bd[r].ref[ryu * W + x] < 0xFE && idx[(y - 1) * 320 + sx] != bd[r].ref[ryu * W + x]) ok = false;
-                if (ryd == ry + 1 && ryd < bd[r].h && bd[r].ref[ryd * W + x] < 0xFE && idx[(y + 1) * 320 + sx] != bd[r].ref[ryd * W + x]) ok = false;
+                if (q == 0xFF || idx[y * 320 + sx] != q || !pass[(ry / TS) * tw + x / TS]) continue;
+                bool ok = true;
+                if (bd[r].strict) {                             /* the 4 neighbours (screen) still the picture */
+                    if (x > 0 && bd[r].ref[ry * W + x - 1] < 0xFE && idx[y * 320 + sx - 1] != bd[r].ref[ry * W + x - 1]) ok = false;
+                    if (x + 1 < W && bd[r].ref[ry * W + x + 1] < 0xFE && idx[y * 320 + sx + 1] != bd[r].ref[ry * W + x + 1]) ok = false;
+                    if (ryu == ry - 1 && ryu >= 0 && bd[r].ref[ryu * W + x] < 0xFE && idx[(y - 1) * 320 + sx] != bd[r].ref[ryu * W + x]) ok = false;
+                    if (ryd == ry + 1 && ryd < bd[r].h && bd[r].ref[ryd * W + x] < 0xFE && idx[(y + 1) * 320 + sx] != bd[r].ref[ryd * W + x]) ok = false;
                 }
                 if (ok) xrgb[y * 320 + sx] = bd[r].rgb[ry * W + x];
             }

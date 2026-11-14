@@ -785,6 +785,8 @@ s16 ega_anim_step(u16 a)
             if (sprite_hspan_clip(DSS(DS_tiles6 + 4 * i), DSS(DS_tiles6 + 4 * i + 2), a, (s16 *)&r))
                 ega_sprite_over_bg(ds_far(ref), ds_far(n), bg, tail_at(DSW(ref + 4), &tl), &r);
         }
+        Rect full = { (s16)desc_w(ds_far(ref)), r.h, 0, 0, DSS(a + 0x0C), DSS(a + 0x0E) };
+        amiga_on_sprite(ds_far(ref), ds_far(n), &full);           /* ENHANCED: --amiga (bars stay in front) */
     } else if (DSW(DS_location) == 3) {           /* event 15: three tiles, each followed by its overlay */
         for (u16 i = 0; i < 3; i++) {
             if (sprite_hspan_clip(DSS(DS_tiles3 + 4 * i), DSS(DS_tiles3 + 4 * i + 2), a, (s16 *)&r))
@@ -792,6 +794,8 @@ s16 ega_anim_step(u16 a)
             modules.event15_overlay(ds_far(n), (s16)i);          /* 2925:1cae */
         }
         modules.event15_overlay(ds_far(n), 3);
+        Rect full = { (s16)desc_w(ds_far(ref)), r.h, 0, 0, DSS(a + 0x0C), DSS(a + 0x0E) };
+        amiga_on_sprite(ds_far(ref), ds_far(n), &full);           /* ENHANCED: --amiga (pumps stay in front) */
     } else {
         r.w = (s16)desc_w(ds_far(ref));
         r.sx = 0;
