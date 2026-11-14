@@ -58,6 +58,10 @@ void r3d_shape_upload(int type, const uint32_t *bgra, int w, int h, int ox, int 
 typedef struct { int16_t seg, x; uint8_t type; int8_t side; } R3dObject;
 void r3d_objects_set(const R3dObject *objs, int n);
 
+/* The original's sky / horizon panorama (road_draw_sky 3e66, 3cca), BGRA, w = 320 pixels per 320 / FOCAL radians
+ * of view, horizon at row horizon_row; drawn as a cylinder around the camera. h = 0: no panorama. */
+void r3d_sky_upload(const uint32_t *bgra, int w, int h, int horizon_row);
+
 typedef struct {
     float pos;          /* track position in segments: seg + substep / 64 */
     float cam_x;        /* lateral camera position (0xA00 = start lane) */
@@ -73,6 +77,7 @@ typedef struct {
      * above the base road level, and the picture's roll (radians) */
     float aq_fl, aq_fr, aq_tl, aq_tr, aq_th, aq_floor, roll;
     bool squeal;        /* R2.2: the tyres squeal (DS:72E0): tyre smoke */
+    uint32_t pal[16];   /* the live palette registers as 0xRRGGBB (the original's colours by index) */
 } R3dView;
 
 void r3d_view_push(const R3dView *v);

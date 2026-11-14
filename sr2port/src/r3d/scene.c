@@ -88,14 +88,14 @@ void r3d_track_set(const R3dTrack *t)
     /* centre line: point i starts segment i, which runs in direction YAW[i] */
     cx[0] = cz[0] = 0;
     for (int i = 0; i < R3D_TRACK_N; i++) {
-        float a = trk.yaw[i] * YAW_RAD;
+        float a = -trk.yaw[i] * YAW_RAD;               /* a larger YAW bends the road left */
         cx[i + 1] = cx[i] + SEG_LEN * sinf(a);
         cz[i + 1] = cz[i] + SEG_LEN * cosf(a);
     }
     /* cross-section direction at point i: between the segments before and after it */
     for (int i = 0; i <= R3D_TRACK_N; i++) {
         int a = i > 0 ? i - 1 : 0, b = i < R3D_TRACK_N ? i : R3D_TRACK_N - 1;
-        th[i] = 0.5f * (trk.yaw[a] + trk.yaw[b]) * YAW_RAD;
+        th[i] = -0.5f * (trk.yaw[a] + trk.yaw[b]) * YAW_RAD;
         cy[i] = trk.hgt[b] * HGT_UNIT;
     }
     if (SDL_getenv("SR_R3D_TRACE")) {
@@ -446,48 +446,56 @@ static void band(float p0, float p1, float X0, float X1, float h00, float h01, f
     verts[nv++] = v[0]; verts[nv++] = v[2]; verts[nv++] = v[3];
 }
 
+/* the 16 colours of the live palette registers (R3dView.pal), and a colour by palette index */
+static float pal_rgb[16][3];
+#define PC(k) pal_rgb[k][0], pal_rgb[k][1], pal_rgb[k][2]
+
+/* the original's colours (road_draw_band_front 4322, road_draw_front 6a32): road 1 (finish band 15), grass 9 right
+ * beside the road, centre dash 4, Mulholland kerbs / rails 2 between the outer edge and the road, hillsides and
+ * drop-offs 14, intersection pavements 4, drag-strip walls 11 / 4 */
 static void build(int first, int last, int mode)
 {
     nv = 0;
-    float w = mode == 0x10 ? 200.0f : 400.0f;                 /* shoulder width (07e4) */
+    bool mul = mode == 0x10;
+    float w = mul ? 200.0f : 400.0f;                           /* outer edge distance (07e4) */
     for (int i = first; i < last; i++) {
         float p0 = (float)i, p1 = (float)(i + 1);
-        bool alt = (i / 2) & 1;                                 /* light / dark bands, two segments each */
+        unsigned c = trk.c[i];
         float xl0, xr0, xl1, xr1;
         edges(i, &xl0, &xr0);
         edges(i + 1 < R3D_TRACK_N ? i + 1 : i, &xl1, &xr1);
         float xl = fminf(xl0, xl1), xr = fmaxf(xr0, xr1);
-        /* road, shoulders */
-        if (xr > xl) band(p0, p1, xl, xr, 0, 0, 0, 0, alt ? 0.34f : 0.31f, alt ? 0.34f : 0.31f, alt ? 0.36f : 0.33f);
+        int road = ((c & 0x10) && (!mul || i >= 0x3AD)) ? 15 : 1;
+        if (xr > xl) band(p0, p1, xl, xr, 0, 0, 0, 0, PC(road));
         float sl = 0x5DC - w, sr = 0xCE4 + w;
-        if (xl > sl) band(p0, p1, sl, xl, 0, 0, 0, 0, alt ? 0.62f : 0.57f, alt ? 0.52f : 0.48f, 0.34f);
-        if (sr > xr) band(p0, p1, xr, sr, 0, 0, 0, 0, alt ? 0.62f : 0.57f, alt ? 0.52f : 0.48f, 0.34f);
-        /* centre dash (C & 8) */
-        if (trk.c[i] & 8) band(p0, p1 - 0.5f, X_MID - 20, X_MID + 20, 3, 3, 3, 3, 0.95f, 0.95f, 0.92f);
-        /* drag strip barrier walls (597e): road edges up to world height 0x79E (50 above the road), blocks of five
-         * segments in colour 0x0B / 4 */
-        if (trk.wall_phase >= 0) {
-            int ph = i - trk.wall_phase;
-            bool cyan = (ph < 0 ? -ph : ph) % 10 < 5;
-            float r = cyan ? 0.33f : 0.67f, g = cyan ? 1.0f : 0.0f, b = cyan ? 1.0f : 0.0f;
-            band(p0, p1, xl, xl, 0, 50, 0, 50, r, g, b);
-            band(p0, p1, xr, xr, 0, 50, 0, 50, r, g, b);
+        bool cross = c & 1;
+        if (cross) {                                           /* intersection pavements */
+            band(p0, p1, sl, xl, 0.5f, 0.5f, 0.5f, 0.5f, PC(4));
+            band(p0, p1, xr, sr, 0.5f, 0.5f, 0.5f, 0.5f, PC(4));
+        } else if (mul && !(c & 0x80)) {                       /* kerbs / rails */
+            band(p0, p1, sl, xl, 0, 0, 0, 0, PC(2));
+            band(p0, p1, xr, sr, 0, 0, 0, 0, PC(2));
         }
-        /* banks (Mulholland): hillside (> 0) or drop-off (< 0) beyond the shoulder, then flat ground */
+        if (c & 8) band(p0, p1 - 0.5f, X_MID - 20, X_MID + 20, 3, 3, 3, 3, PC(4));     /* centre dash */
+        if (trk.wall_phase >= 0) {                             /* drag strip barrier walls (597e), 50 high */
+            int ph = i - trk.wall_phase;
+            int wc = (ph < 0 ? -ph : ph) % 10 < 5 ? 11 : 4;
+            band(p0, p1, xl, xl, 0, 50, 0, 50, PC(wc));
+            band(p0, p1, xr, xr, 0, 50, 0, 50, PC(wc));
+        }
+        /* grass beside the road (or beyond the outer edge), Mulholland banks: hillside > 0, drop-off < 0 */
+        float gl = (cross || mul) ? sl : xl, gr_ = (cross || mul) ? sr : xr;
         int i1 = i + 1 < R3D_TRACK_N ? i + 1 : i;
         float bl0 = trk.bl[i], bl1 = trk.bl[i1], br0 = trk.br[i], br1 = trk.br[i1];
-        float gr = alt ? 0.24f : 0.21f, gg = alt ? 0.47f : 0.43f, gb = alt ? 0.19f : 0.17f;
         float fl = -(w - 0x177) * 4, frr = (w + 0x339) * 4;     /* far bank x (07e4 XFL / XFR) */
         if (bl0 != 0 || bl1 != 0) {
-            bool hill = bl0 > 0 || bl1 > 0;
-            band(p0, p1, fl, sl, bl0, 0, bl1, 0, hill ? 0.72f : 0.45f, hill ? 0.62f : 0.38f, hill ? 0.30f : 0.28f);
-            band(p0, p1, X_MID - FAR_X, fl, bl0, bl0, bl1, bl1, gr, gg, gb);
-        } else band(p0, p1, X_MID - FAR_X, sl, 0, 0, 0, 0, gr, gg, gb);
+            band(p0, p1, fl, gl, bl0, 0, bl1, 0, PC(14));
+            band(p0, p1, X_MID - FAR_X, fl, bl0, bl0, bl1, bl1, PC(14));
+        } else band(p0, p1, X_MID - FAR_X, gl, 0, 0, 0, 0, PC(9));
         if (br0 != 0 || br1 != 0) {
-            bool hill = br0 > 0 || br1 > 0;
-            band(p0, p1, sr, frr, 0, br0, 0, br1, hill ? 0.72f : 0.45f, hill ? 0.62f : 0.38f, hill ? 0.30f : 0.28f);
-            band(p0, p1, frr, X_MID + FAR_X, br0, br0, br1, br1, gr, gg, gb);
-        } else band(p0, p1, sr, X_MID + FAR_X, 0, 0, 0, 0, gr, gg, gb);
+            band(p0, p1, gr_, frr, 0, br0, 0, br1, PC(14));
+            band(p0, p1, frr, X_MID + FAR_X, br0, br0, br1, br1, PC(14));
+        } else band(p0, p1, gr_, X_MID + FAR_X, 0, 0, 0, 0, PC(9));
     }
 }
 
@@ -503,20 +511,13 @@ static void build_channel(int first, int last, const R3dView *v)
     for (int i = first; i < last; i++) {
         float p0 = (float)i, p1 = (float)(i + 1);
         unsigned f = trk.c[i];
-        bool alt = (i / 2) & 1;
-        float k = alt ? 0.70f : 0.66f;
-        if (f & 0x400) band(p0, p1, fl, fr, fh, fh, fh, fh, 0.93f, 0.93f, 0.90f);
-        else band(p0, p1, fl, fr, fh, fh, fh, fh, k, k * 0.97f, k * 0.90f);
-        if (!(f & 2)) band(p0, p1, mid - 0x28, mid + 0x28, fh + 2, fh + 2, fh + 2, fh + 2, 0.42f, 0.42f, 0.40f);
-        if (f & 1) band(p0, p0 + 0.06f, fl, fr, fh + 3, fh + 3, fh + 3, fh + 3, 0.30f, 0.30f, 0.28f);
-        float wk = alt ? 0.62f : 0.58f;
-        if (f & (4 | 0x100)) band(p0, p1, tl, fl, th, fh, th, fh, 0.16f, 0.15f, 0.14f);        /* opening */
-        else band(p0, p1, tl, fl, th, fh, th, fh, wk, wk * 0.96f, wk * 0.88f);
-        if (f & (8 | 0x200)) band(p0, p1, fr, tr, fh, th, fh, th, 0.16f, 0.15f, 0.14f);
-        else band(p0, p1, fr, tr, fh, th, fh, th, wk, wk * 0.96f, wk * 0.88f);
-        float gr = alt ? 0.50f : 0.46f;                    /* dry ground beyond the walls */
-        band(p0, p1, X_MID - FAR_X, tl, th, th, th, th, gr, gr * 0.92f, gr * 0.70f);
-        band(p0, p1, tr, X_MID + FAR_X, th, th, th, th, gr, gr * 0.92f, gr * 0.70f);
+        band(p0, p1, fl, fr, fh, fh, fh, fh, PC((f & 0x400) ? 15 : 5));
+        if (!(f & 2)) band(p0, p1, mid - 0x28, mid + 0x28, fh + 2, fh + 2, fh + 2, fh + 2, PC(2));
+        if (f & 1) band(p0, p0 + 0.06f, fl, fr, fh + 3, fh + 3, fh + 3, fh + 3, PC(2));
+        band(p0, p1, tl, fl, th, fh, th, fh, PC((f & (4 | 0x100)) ? 0 : 5));
+        band(p0, p1, fr, tr, fh, th, fh, th, PC((f & (8 | 0x200)) ? 0 : 5));
+        band(p0, p1, X_MID - FAR_X, tl, th, th, th, th, PC(0));
+        band(p0, p1, tr, X_MID + FAR_X, th, th, th, th, PC(0));
     }
 }
 
@@ -552,14 +553,111 @@ static void emit_puffs(const R3dView *v)
     } else acc_smoke = 0;
 }
 
+/* ---------------------------------------------------------------- sky */
+
+#define SKY_R 100000.0f
+static GLuint sky_tex;
+static int sky_w, sky_h, sky_hz;
+static uint32_t sky_hash;
+
+void r3d_sky_upload(const uint32_t *bgra, int w, int h, int horizon_row)
+{
+    if (!bgra || w <= 0 || h <= 0) { sky_h = 0; return; }
+    uint32_t hsh = 2166136261u ^ (uint32_t)(w * 31 + h * 7 + horizon_row);
+    for (int i = 0; i < w * h; i++) hsh = (hsh ^ bgra[i]) * 16777619u;
+    sky_w = w; sky_h = h; sky_hz = horizon_row;
+    if (sky_tex && hsh == sky_hash) return;
+    sky_hash = hsh;
+    if (!sky_tex) {
+        gl.GenTextures(1, &sky_tex);
+        gl.BindTexture(GL_TEXTURE_2D, sky_tex);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+    gl.BindTexture(GL_TEXTURE_2D, sky_tex);
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, bgra);
+}
+
+/* The panorama on a cylinder around the eye: one pixel = 1 / FOCAL radian, as the road (the original scrolls it
+ * twice as fast; in 3D it has to stay with the world), the horizon row on the eye's horizon; below it the
+ * original's ground fill (colour 9) down to 45 degrees, so the far end of the ground meets it. */
+static void sky_draw(const float *mvp, const float *eye, const float *fog)
+{
+    if (sky_h <= 0 || !sky_tex) return;
+    gl.Disable(GL_DEPTH_TEST);
+    const int N = 96;
+    float upp = SKY_R / FOCAL;                                 /* world height of one panorama row */
+    float top = eye[1] + (float)sky_hz * upp, bot = eye[1] + (float)(sky_hz - sky_h) * upp;
+    /* ground fill (its own vertices: verts holds the road mesh) */
+    static Vert fill[96 * 6];
+    int nf = 0;
+    for (int k = 0; k < N; k++) {
+        float a0 = 6.2831853f * k / N, a1 = 6.2831853f * (k + 1) / N;
+        float x0 = eye[0] + SKY_R * sinf(a0), z0 = eye[2] + SKY_R * cosf(a0);
+        float x1 = eye[0] + SKY_R * sinf(a1), z1 = eye[2] + SKY_R * cosf(a1);
+        Vert q0 = { x0, bot, z0, PC(9) }, q1 = { x1, bot, z1, PC(9) };
+        Vert q2 = { x1, eye[1] - SKY_R, z1, PC(9) }, q3 = { x0, eye[1] - SKY_R, z0, PC(9) };
+        fill[nf++] = q0; fill[nf++] = q1; fill[nf++] = q2;
+        fill[nf++] = q0; fill[nf++] = q2; fill[nf++] = q3;
+    }
+    gl.UseProgram(prog);
+    gl.UniformMatrix4fv(loc_mvp, 1, GL_FALSE, mvp);
+    gl.Uniform3f(loc_eye, eye[0], eye[1], eye[2]);
+    gl.Uniform3f(loc_fog, fog[0], fog[1], fog[2]);
+    gl.Uniform3f(loc_fogr, fog_range[0], fog_range[1], fog_range[2]);
+    gl.Uniform4f(loc_lite, lite[0], lite[1], lite[2], lite[3]);
+    gl.Uniform3f(loc_fwd, fwd[0], fwd[1], fwd[2]);
+    gl.BindVertexArray(vao);
+    gl.BindBuffer(GL_ARRAY_BUFFER, vbo);
+    gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(nf * sizeof(Vert)), fill, GL_STREAM_DRAW);
+    gl.DrawArrays(GL_TRIANGLES, 0, nf);
+    /* the panorama */
+    int n = 0;
+    float urad = FOCAL / (float)sky_w;                         /* texture repeats per radian */
+    for (int k = 0; k < N && n + 6 <= MAX_SVERTS; k++) {
+        float a0 = 6.2831853f * k / N, a1 = 6.2831853f * (k + 1) / N;
+        float x0 = eye[0] + SKY_R * sinf(a0), z0 = eye[2] + SKY_R * cosf(a0);
+        float x1 = eye[0] + SKY_R * sinf(a1), z1 = eye[2] + SKY_R * cosf(a1);
+        float u0 = a0 * urad, u1 = a1 * urad;
+        SVert q[6] = { { x0, bot, z0, u0, 1 }, { x1, bot, z1, u1, 1 }, { x1, top, z1, u1, 0 },
+                       { x0, bot, z0, u0, 1 }, { x1, top, z1, u1, 0 }, { x0, top, z0, u0, 0 } };
+        memcpy(sverts + n, q, sizeof q);
+        n += 6;
+    }
+    gl.UseProgram(sprog);
+    gl.UniformMatrix4fv(sloc_mvp, 1, GL_FALSE, mvp);
+    gl.Uniform3f(sloc_eye, eye[0], eye[1], eye[2]);
+    gl.Uniform3f(sloc_fog, fog[0], fog[1], fog[2]);
+    gl.Uniform3f(sloc_fogr, fog_range[0], fog_range[1], fog_range[2]);
+    gl.Uniform4f(sloc_lite, lite[0], lite[1], lite[2], lite[3]);
+    gl.Uniform3f(sloc_fwd, fwd[0], fwd[1], fwd[2]);
+    gl.Uniform1i(sloc_tex, 0);
+    gl.ActiveTexture(GL_TEXTURE0);
+    gl.BindTexture(GL_TEXTURE_2D, sky_tex);
+    gl.BindVertexArray(svao);
+    gl.BindBuffer(GL_ARRAY_BUFFER, svbo);
+    gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(n * sizeof(SVert)), sverts, GL_STREAM_DRAW);
+    gl.DrawArrays(GL_TRIANGLES, 0, n);
+    gl.BindVertexArray(0);
+    gl.Enable(GL_DEPTH_TEST);
+}
+
 void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
 {
-    float sky[3] = { 0.36f, 0.56f, 0.86f }, haze[3] = { 0.70f, 0.80f, 0.92f };
+    for (int k = 0; k < 16; k++) {
+        pal_rgb[k][0] = (float)(v->pal[k] >> 16 & 255) / 255.0f;
+        pal_rgb[k][1] = (float)(v->pal[k] >> 8 & 255) / 255.0f;
+        pal_rgb[k][2] = (float)(v->pal[k] & 255) / 255.0f;
+    }
+    float sky[3] = { pal_rgb[0][0], pal_rgb[0][1], pal_rgb[0][2] }, haze[3] = { 0.70f, 0.80f, 0.92f };
     if (rain) {                                            /* R2.1: overcast, short visibility, wet and dim */
         sky[0] = 0.42f; sky[1] = 0.46f; sky[2] = 0.52f;
         haze[0] = 0.46f; haze[1] = 0.50f; haze[2] = 0.55f;
         fog_range[0] = 2500.0f; fog_range[1] = 30000.0f; fog_range[2] = 0.72f;
-    } else { fog_range[0] = 20000.0f; fog_range[1] = 50000.0f; fog_range[2] = 1.0f; }
+    } else { fog_range[0] = 1e9f; fog_range[1] = 1.0f; fog_range[2] = 1.0f; }    /* the original has no haze */
     lite[0] = 1; lite[1] = 0;
     if (tod == 1) {                                        /* R2.3 dusk: warm low light */
         sky[0] = 0.78f; sky[1] = 0.45f; sky[2] = 0.32f; haze[0] = 0.62f; haze[1] = 0.42f; haze[2] = 0.38f;
@@ -587,7 +685,7 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
     int si = seg < 0 ? 0 : (seg >= R3D_TRACK_N ? R3D_TRACK_N - 1 : seg);
     float above = (0x7D0 - v->cam_y) + (v->height - trk.hgt[si]) * HGT_UNIT;
     track_point(v->pos, v->cam_x, above, &ex, &ey, &ez);
-    float yaw = v->heading * YAW_RAD;
+    float yaw = -v->heading * YAW_RAD;                    /* a larger heading looks left */
     fwd[0] = sinf(yaw); fwd[1] = cosf(yaw);                /* R2.3: the headlights point where the car points */
     r3d_fx_set_light(tod == 2 ? 0.3f : tod == 1 ? 0.75f : 1.0f);
     float proj[16], view[16], mvp[16];
@@ -608,6 +706,10 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
     }
     mat_mul(mvp, proj, view);
 
+    {
+        const float e3[3] = { ex, ey, ez };
+        sky_draw(mvp, e3, haze);
+    }
     gl.UseProgram(prog);
     gl.UniformMatrix4fv(loc_mvp, 1, GL_FALSE, mvp);
     gl.Uniform3f(loc_eye, ex, ey, ez);

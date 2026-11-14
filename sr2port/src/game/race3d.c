@@ -356,6 +356,39 @@ static void tree_sprite(R3dSprite *o)
 
 #define AQ_N 0x172                  /* Aqueduct flags 3726:4E62 */
 
+/* The sky the original scrolls in (road_load_graphics 37ce keeps it in page 1's rows below the view): normal
+ * roads = the 52-row sky at rows 102..153 above the first 20 rows of the horizon panorama (rows 163..182, horizon
+ * at its row 12: road_draw_sky 3e66); Mulholland = one panorama, rows 110..199, horizon near row 154
+ * (road_draw_sky_mulholland 3cca); the Aqueduct has a night sky of its own (none here). */
+static void push_sky(void)
+{
+    static u32 sky[320 * 90];
+    if (MODE == 8) { r3d_sky_upload(NULL, 0, 0, 0); return; }
+    FarPtr pg = desc_planes(ds_far(DS_page1_ptr));
+    u32 base = (u32)(pg.seg - 0xA000) * 16u + pg.off;
+    u32 rgb[16];
+    for (int i = 0; i < 16; i++) {
+        u8 r = ega_get_palette_reg(i);
+        rgb[i] = ega_palette[(r & 7) | (r >> 1 & 8)] | 0xFF000000u;
+    }
+    int rows[90], n = 0, horizon;
+    if (MODE == 0x10) { for (int y = 110; y < 200; y++) rows[n++] = y; horizon = 44; }
+    else {
+        for (int y = 102; y < 154; y++) rows[n++] = y;
+        for (int y = 163; y < 183; y++) rows[n++] = y;
+        horizon = 64;
+    }
+    for (int k = 0; k < n; k++)
+        for (int x = 0; x < 320; x++) {
+            u32 o = (base + (u32)rows[k] * EGA_BYTES_PER_LINE + (u32)(x >> 3)) & 0xFFFF;
+            u8 bit = (u8)(0x80 >> (x & 7));
+            int c = 0;
+            for (int pl = 0; pl < 4; pl++) if (ega_plane(pl)[o] & bit) c |= 1 << pl;
+            sky[k * 320 + x] = rgb[c];
+        }
+    r3d_sky_upload(sky, 320, n, horizon);
+}
+
 static void push_track(void)
 {
     static R3dTrack t;
@@ -412,6 +445,11 @@ static void push_view(void)
     if (drag()) v.height = 0;                              /* flat; the HGT pointer is not advanced there */
     if (MODE == 8) aq_view(&v);
     v.squeal = DSW(DS_squeal) != 0;
+    for (int i = 0; i < 16; i++) {
+        u8 r = ega_get_palette_reg(i);
+        v.pal[i] = ega_palette[(r & 7) | (r >> 1 & 8)];
+    }
+    push_sky();
     push_scenery();
     opp_sprite(&v.opp);
     tree_sprite(&v.tree);
