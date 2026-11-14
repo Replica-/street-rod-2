@@ -425,7 +425,9 @@ void amiga_car_shown(FarPtr frame, FarPtr page, int x, int y, int frow0, int row
 void amiga_on_sprite(FarPtr sprite, FarPtr page, const Rect *r)
 {
     if (!on || !r || desc_type(page) != DESC_TYPE_EGA) return;
-    car_blit(sprite, page_of(page), r);
+    Rect rr = *r;
+    rr.dx = (s16)(r->dx & ~7);                                        /* the sprite goes to whole bytes (dx >> 3) */
+    car_blit(sprite, page_of(page), &rr);
 }
 
 /* ---------------------------------------------------------------- blits onto the screen */

@@ -133,9 +133,16 @@ void ega_copy_backdrops(int spage, int sx, int sy, int w, int h, int dpage, int 
  * car do not count for the other regions: the car covers them, they have not left the screen (a tile wholly under the
  * car follows its region; each pixel is still drawn only where the screen shows the picture). */
 #define TS 16
+/* ENHANCED: a register switched from a colour to black (the game blanking a screen before it leaves): the full-colour
+ * backdrops go black there too */
+static bool blanked[16];
+
 static void apply_backdrops(u32 *xrgb)
 {
     if (!bd_n) return;
+    int nblank = 0;
+    for (int i = 0; i < 16; i++) nblank += blanked[i];
+    if (nblank >= 8) return;                                    /* the screen is blanked: all black */
     static u8 idx[320 * 200];
     int prow[200], ppage[200];                                  /* page and page row shown on each screen row */
     for (int y = 0; y < 200; y++) {
@@ -209,7 +216,7 @@ static void apply_backdrops(u32 *xrgb)
                 int sx = bd[r].x + x;
                 u8 q = bd[r].ref[ry * W + x];
                 if (q == 0xFE) { xrgb[y * 320 + sx] = bd[r].rgb[ry * W + x]; continue; }    /* always (overhang) */
-                if (q == 0xFF || idx[y * 320 + sx] != q || !pass[(ry / TS) * tw + x / TS]) continue;
+                if (q == 0xFF || idx[y * 320 + sx] != q || !pass[(ry / TS) * tw + x / TS] || blanked[q]) continue;
                 bool ok = true;
                 if (bd[r].strict) {                             /* the 4 neighbours (screen) still the picture */
                     if (x > 0 && bd[r].ref[ry * W + x - 1] < 0xFE && idx[y * 320 + sx - 1] != bd[r].ref[ry * W + x - 1]) ok = false;
@@ -289,6 +296,11 @@ void ega_touch(void) { dirty = true; }
 void ega_set_palette_reg(int reg, u8 value)
 {
     if (reg < 0 || reg > 16) return;
+    if (reg < 16) {
+        bool black = ((value & 7) | (value >> 1 & 8)) == 0, was = ((palette_reg[reg] & 7) | (palette_reg[reg] >> 1 & 8)) == 0;
+        if (black && !was) blanked[reg] = true;
+        else if (!black) blanked[reg] = false;
+    }
     if (palette_reg[reg] != value) { palette_reg[reg] = value; dirty = true; }
 }
 

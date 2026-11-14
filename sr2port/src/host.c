@@ -376,15 +376,19 @@ static void snapshot(void)
     static bool checked;
     static Uint64 last_ns;
     static int n;
-    static Uint64 interval_ns = 2 * SDL_NS_PER_SECOND;
+    static Uint64 interval_ns = 2 * SDL_NS_PER_SECOND, from_ns, to_ns = ~0ull;
     if (!checked) {
         dir = SDL_getenv("SR_SNAPSHOT_DIR");
+        const char *from = SDL_getenv("SR_SNAPSHOT_FROM"), *to = SDL_getenv("SR_SNAPSHOT_TO");   /* ms after start */
+        if (from) from_ns = (Uint64)SDL_atoi(from) * SDL_NS_PER_MS;
+        if (to) to_ns = (Uint64)SDL_atoi(to) * SDL_NS_PER_MS;
         const char *ms = SDL_getenv("SR_SNAPSHOT_MS");
         if (ms && SDL_atoi(ms) > 0) interval_ns = (Uint64)SDL_atoi(ms) * SDL_NS_PER_MS;
         checked = true;
     }
     if (!dir) return;
     Uint64 now = SDL_GetTicksNS();
+    if (now < from_ns || now > to_ns) return;
     if (n && now - last_ns < interval_ns) return;
     last_ns = now;
     char path[512];

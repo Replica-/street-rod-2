@@ -111,6 +111,7 @@ _Noreturn void host_fatal(const char *fmt, ...);
 /* ---- Developer aids (environment variables):
  *   SR_SNAPSHOT_DIR=dir   every presented frame >= 2 s (SR_SNAPSHOT_MS=n: n ms) after the previous
  *                         one is saved as snapNNNN.bmp
+ *                         (SR_SNAPSHOT_FROM / SR_SNAPSHOT_TO=ms after start-up: only in that window)
  *                         (works with SDL_VIDEO_DRIVER=dummy)
  *   SR_KEYS="<seconds>:<xt>[+<xt>...],..."  presses (in order) and releases (in reverse) the XT keys
  *                         at that many seconds after start-up; a "p" after the codes only presses
