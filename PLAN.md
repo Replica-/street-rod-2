@@ -168,7 +168,7 @@ Notes:
 - S6.1 (2026-10-10): `sr2port/tools/package_release.py` → `release/sr2port-v0.1.0-win64.zip` (10.9 MB, 43 entries: sr2port.exe, Street Rod 2.exe, 19 DLLs from the objdump import closure, player README `sr2port/dist/README.md`, LICENSE, licenses/), `release/RELEASE_NOTES.md`, `SHA256SUMS.txt` (573a222a…); CHANGELOG.md; version 0.1.0. Unzipped run without msys64 on PATH: ok. No tag/remote yet.
 
 When S6.2 is done and the playtest passed, the faithful port is finished: the "Enhanced backlog" below
-becomes the plan of a new `Street Rod 2 Enhanced` repo (`C:\Coding\StreetRod2Enhanced`, game-port-setup
+becomes the plan of a new `Street Rod 2 Enhanced` repo (`D:\development\street-rod-2-enhanced`, set up 2026-11-14, game-port-setup
 skill, mode B, launcher and enhancements taken from `../StreetRodEnhanced`). Bugs found later are
 fixed here first, then ported to Enhanced.
 
