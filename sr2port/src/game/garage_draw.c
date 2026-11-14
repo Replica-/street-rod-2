@@ -65,7 +65,9 @@ static void ega_vram_cache_strips(u16 tails, const FarPtr *frames, s16 n, s16 yo
         }
         s16 s = (s16)desc_stride(fr);
         u16 off = (u16)(DSS((u16)(t + 4)) * s);
+        amiga_cache_begin(fr, tp, (u16)s, rows, DSS((u16)(t + 4)));   /* ENHANCED: --amiga, the full-colour car */
         ega_blit_4planes(planes_plus(fr, off), tp, (u16)(desc_mask(fr).off + off), s, rows, s, (u16)(desc_h(fr) * s));
+        amiga_cache_end();
     }
 }
 
@@ -277,8 +279,6 @@ void car_draw(s16 mode, s16 model, s16 flags, s16 driver, s16 y, u16 tyre_pics)
                 d.off = (u16)((u16)((y - h) * 0x28) + (u16)(x >> 3) + d.off + 0x28);
                 ega_latch_copy_to40(ds_far(DS_car_tails), (s16)desc_stride(frames[0]), (s16)(desc_h(frames[0]) - DSS(YOFF)), d,
                                     (s16)desc_stride(frames[0]));
-                amiga_car_shown(frames[0], g_back(), x & ~7, (s16)(y - h + 1), 0, (s16)(desc_h(frames[0]) - DSS(YOFF)));   /* ENHANCED */
-                amiga_car_shown(frames[0], g_front(), x & ~7, (s16)(y - h + 1), 0, (s16)(desc_h(frames[0]) - DSS(YOFF)));
                 present_back_page();
                 break;
             }
@@ -287,8 +287,6 @@ void car_draw(s16 mode, s16 model, s16 flags, s16 driver, s16 y, u16 tyre_pics)
                 d.off = (u16)((u16)((y - h) * 0x28) + (u16)(x >> 3) + d.off + 0x28);
                 ega_latch_copy_to40(ds_far(DS_car_tails), (s16)desc_stride(frames[0]), (s16)(h - DSS(YOFF)), d,
                                     (s16)desc_stride(frames[0]));
-                amiga_car_shown(frames[0], g_front(), x & ~7, (s16)(y - h + 1), 0, (s16)(h - DSS(YOFF)));   /* ENHANCED */
-                amiga_car_shown(frames[0], g_back(), x & ~7, (s16)(y - h + 1), 0, (s16)(h - DSS(YOFF)));
                 page_copy_rect(g_front(), g_back(), x, (s16)(y - h + 1), (s16)(x + w - 1), y);
                 break;
             }

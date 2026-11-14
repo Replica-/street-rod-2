@@ -6,6 +6,7 @@
 #include <SDL3/SDL.h>
 
 #include "host.h"
+#include "platform/shadow.h"
 #include "r3d/r3d.h"
 
 static u8 planes[4][EGA_PLANE_SIZE];
@@ -44,236 +45,9 @@ void ega_set_page_mask(int page, const u8 *mask)
     }
 }
 
-/* ENHANCED (--amiga, enh/amiga.c): pictures in full colour. Each region = a picture as the game blitted it (ref = its
- * colour indices, 0xFF = not part of it; rgb = the replacement) at row y, column x of a page (page = plane offset /
- * 2000h; rows past 200 are the page's storage). Page-to-page blits copy the regions inside (the race sky from page 1's
- * storage into the view, back page -> front page), any blit drops the regions it covers. The composer shows the
- * replacement where the screen still shows the reference pixel (and its 4 neighbours do too, so things drawn on top in
- * the picture's own colour stay the game's), only while most of the visible region matches. Newest last (on top). */
-#define BD_MAX 256
-static struct { u8 *ref; u32 *rgb; int page, x, y, w, h; bool strict, car; u8 *cov; int ncov; Uint64 cov_t; } bd[BD_MAX];
-                                    /* strict: 4-neighbour rule; cov: pixels drawn over in the current burst (cov_t) */
-static int bd_n;
-
-static void bd_free(int i) { free(bd[i].ref); free(bd[i].rgb); free(bd[i].cov); }
-
-void ega_drop_backdrops(int page, int x, int y, int w, int h)
-{
-    int k = 0;
-    for (int i = 0; i < bd_n; i++) {
-        bool inside = bd[i].page == page && bd[i].x >= x && bd[i].y >= y && bd[i].x + bd[i].w <= x + w &&
-                      bd[i].y + bd[i].h <= y + h;
-        if (inside) bd_free(i);
-        else bd[k++] = bd[i];
-    }
-    if (k != bd_n) dirty = true;
-    bd_n = k;
-}
-
-void ega_cover_backdrops(int page, int x, int y, int w, int h)
-{
-    ega_drop_backdrops(page, x, y, w, h);
-    int k = 0;
-    for (int i = 0; i < bd_n; i++) {
-        int x0 = bd[i].x > x ? bd[i].x : x, y0 = bd[i].y > y ? bd[i].y : y;
-        int x1 = bd[i].x + bd[i].w < x + w ? bd[i].x + bd[i].w : x + w;
-        int y1 = bd[i].y + bd[i].h < y + h ? bd[i].y + bd[i].h : y + h;
-        if (bd[i].page == page && !bd[i].car && x1 > x0 && y1 > y0) {
-            Uint64 now = SDL_GetTicks();
-            if (bd[i].cov && now - bd[i].cov_t > 500) {        /* a new burst of drawing: dialogs come one by one */
-                memset(bd[i].cov, 0, (size_t)bd[i].w * bd[i].h);
-                bd[i].ncov = 0;
-            }
-            bd[i].cov_t = now;
-            if (!bd[i].cov) bd[i].cov = calloc((size_t)bd[i].w * bd[i].h, 1);
-            if (bd[i].cov)
-                for (int yy = y0; yy < y1; yy++)
-                    for (int xx = x0; xx < x1; xx++) {
-                        u8 *c = &bd[i].cov[(yy - bd[i].y) * bd[i].w + xx - bd[i].x];
-                        if (!*c) { *c = 1; bd[i].ncov++; }
-                    }
-            if ((long)bd[i].ncov * 10 >= (long)bd[i].w * bd[i].h * 7) { bd_free(i); dirty = true; continue; }
-        }
-        bd[k++] = bd[i];
-    }
-    bd_n = k;
-}
-
-void ega_add_backdrop(u8 *ref, u32 *rgb, int page, int x, int y, int w, int h, int flags)
-{
-    bool strict = flags & BD_STRICT;
-    if (!ref || !rgb || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > 320 || page < 0 || page > 7) {
-        free(ref); free(rgb); return;
-    }
-    if (flags & (BD_CAR | BD_COPY)) ega_drop_backdrops(page, x, y, w, h);
-    else ega_cover_backdrops(page, x, y, w, h);                 /* a new picture over others counts as drawn over */
-    if ((flags & BD_CAR) && !(flags & BD_COPY)) {               /* a car drawn: its earlier positions go */
-        int k = 0;
-        for (int i = 0; i < bd_n; i++) {
-            if (bd[i].page == page && bd[i].car) bd_free(i);
-            else bd[k++] = bd[i];
-        }
-        bd_n = k;
-    }
-    if (bd_n == BD_MAX) {                                       /* the oldest goes */
-        bd_free(0);
-        memmove(bd, bd + 1, (BD_MAX - 1) * sizeof bd[0]);
-        bd_n--;
-    }
-    bd[bd_n].ref = ref; bd[bd_n].rgb = rgb; bd[bd_n].page = page;
-    bd[bd_n].x = x; bd[bd_n].y = y; bd[bd_n].w = w; bd[bd_n].h = h; bd[bd_n].strict = strict;
-    bd[bd_n].car = (flags & BD_CAR) != 0;
-    bd[bd_n].cov = NULL;
-    bd[bd_n].ncov = 0;
-    bd_n++;
-    dirty = true;
-}
-
-void ega_copy_backdrops(int spage, int sx, int sy, int w, int h, int dpage, int dx, int dy)
-{
-    /* a region goes along only when the copy takes (nearly) all of it: a page flip copy, a screen moved from the
-     * back page; the animation's background repairs and the pointer's save-under copy scraps and are ignored */
-    struct { u8 *ref; u32 *rgb; int x, y, w, h, flags; } add[BD_MAX];
-    int na = 0;
-    for (int i = 0; i < bd_n && na < BD_MAX; i++) {
-        if (bd[i].page != spage) continue;
-        int x0 = bd[i].x > sx ? bd[i].x : sx, y0 = bd[i].y > sy ? bd[i].y : sy;
-        int x1 = bd[i].x + bd[i].w < sx + w ? bd[i].x + bd[i].w : sx + w;
-        int y1 = bd[i].y + bd[i].h < sy + h ? bd[i].y + bd[i].h : sy + h;
-        if (x1 <= x0 || y1 <= y0) continue;
-        if ((long)(x1 - x0) * (y1 - y0) * 10 < (long)bd[i].w * bd[i].h * 9) continue;
-        int nx = dx + (bd[i].x - sx), ny = dy + (bd[i].y - sy);
-        if (nx < 0 || ny < 0 || nx + bd[i].w > 320) continue;
-        size_t n = (size_t)bd[i].w * bd[i].h;
-        u8 *r = malloc(n);
-        u32 *c = malloc(n * sizeof(u32));
-        if (!r || !c) { free(r); free(c); continue; }
-        memcpy(r, bd[i].ref, n);
-        memcpy(c, bd[i].rgb, n * sizeof(u32));
-        add[na].ref = r; add[na].rgb = c; add[na].x = nx; add[na].y = ny; add[na].w = bd[i].w; add[na].h = bd[i].h;
-        add[na].flags = (bd[i].strict ? BD_STRICT : 0) | (bd[i].car ? BD_CAR : BD_COPY);   /* a copied car still replaces the page's car */
-        na++;
-    }
-    ega_drop_backdrops(dpage, dx, dy, w, h);                    /* overwritten */
-    for (int a = 0; a < na; a++)
-        ega_add_backdrop(add[a].ref, add[a].rgb, dpage, add[a].x, add[a].y, add[a].w, add[a].h, add[a].flags);
-}
-
-/* Is a region on screen? Per 16 x 16 tile of the region: a tile counts when at least 60 % of its picture pixels are
- * on screen unchanged, so a dialog over part of a backdrop only switches off the tiles under it. A tile of a single
- * colour (plain black sky) proves nothing on its own: it follows the region, which counts when at least a third of its
- * patterned tiles do (another screen with the same black area shows nothing of it). The pixels under a full-colour
- * car do not count for the other regions: the car covers them, they have not left the screen (a tile wholly under the
- * car follows its region; each pixel is still drawn only where the screen shows the picture). Nor do the pixels under
- * the mouse pointer (ega_pointer_rect). */
-#define TS 16
-static struct { int x, y, w, h; } pointer;
-
-void ega_pointer_rect(int x, int y, int w, int h)
-{
-    pointer.x = x; pointer.y = y; pointer.w = w; pointer.h = h;
-}
-
 /* ENHANCED: a register switched from a colour to black (the game blanking a screen before it leaves): the full-colour
- * backdrops go black there too */
+ * pixels (platform/shadow.h) go black there too */
 static bool blanked[16];
-
-static void apply_backdrops(u32 *xrgb)
-{
-    if (!bd_n) return;
-    int nblank = 0;
-    for (int i = 0; i < 16; i++) nblank += blanked[i];
-    if (nblank >= 8) return;                                    /* the screen is blanked: all black */
-    static u8 idx[320 * 200];
-    int prow[200], ppage[200];                                  /* page and page row shown on each screen row */
-    for (int y = 0; y < 200; y++) {
-        u16 row = y < line_compare ? (u16)(start_addr + y * EGA_BYTES_PER_LINE)
-                                   : (u16)((y - line_compare) * EGA_BYTES_PER_LINE);
-        ppage[y] = row / 0x2000;
-        prow[y] = (row % 0x2000) / EGA_BYTES_PER_LINE;
-        for (int x = 0; x < 320; x++) {
-            u16 o = (u16)(row + (x >> 3));
-            int bit = 7 - (x & 7);
-            idx[y * 320 + x] = (u8)((planes[0][o] >> bit & 1) | (planes[1][o] >> bit & 1) << 1 |
-                                    (planes[2][o] >> bit & 1) << 2 | (planes[3][o] >> bit & 1) << 3);
-        }
-    }
-    enum { TMAX = (320 / TS + 1) * (256 / TS + 1) };
-    static int seen[TMAX], same[TMAX], hid[TMAX];
-    int ptr_x = pointer.x, ptr_y = pointer.y, ptr_w = pointer.w, ptr_h = pointer.h;
-    static u8 under_car[320 * 200];
-    memset(under_car, 0, sizeof under_car);
-#define RY(yy) ((ppage[yy] == bd[r].page) ? prow[yy] - bd[r].y : -1)
-    for (int r = 0; r < bd_n; r++)
-        if (bd[r].car)
-            for (int y = 0; y < 200; y++) {
-                int ry = RY(y);
-                if (ry < 0 || ry >= bd[r].h) continue;
-                for (int x = 0; x < bd[r].w; x++)
-                    if (bd[r].x + x >= 0 && bd[r].x + x < 320) under_car[y * 320 + bd[r].x + x] = 1;
-            }
-    static u16 cmask[TMAX];
-    static bool pass[TMAX];
-    for (int r = 0; r < bd_n; r++) {
-        int W = bd[r].w, tw = (W + TS - 1) / TS, th = (bd[r].h + TS - 1) / TS, nt = tw * th;
-        if (nt > TMAX) continue;
-        memset(seen, 0, sizeof(int) * (size_t)nt);
-        memset(same, 0, sizeof(int) * (size_t)nt);
-        memset(hid, 0, sizeof(int) * (size_t)nt);
-        memset(cmask, 0, sizeof(u16) * (size_t)nt);
-        for (int ry = 0; ry < bd[r].h; ry++)                    /* which colours each tile of the picture has */
-            for (int x = 0; x < W; x++) {
-                u8 q = bd[r].ref[ry * W + x];
-                if (q < 16) cmask[(ry / TS) * tw + x / TS] |= (u16)(1u << q);
-            }
-        for (int y = 0; y < 200; y++) {
-            int ry = RY(y);
-            if (ry < 0 || ry >= bd[r].h) continue;
-            for (int x = 0; x < W; x++) {
-                u8 q = bd[r].ref[ry * W + x];
-                if (q >= 0xFE) continue;
-                int t = (ry / TS) * tw + x / TS;
-                if (!bd[r].car && under_car[y * 320 + bd[r].x + x]) { hid[t]++; continue; }
-                int sx = bd[r].x + x;
-                if (sx >= ptr_x && sx < ptr_x + ptr_w && y >= ptr_y && y < ptr_y + ptr_h) { hid[t]++; continue; }
-                seen[t]++;
-                same[t] += idx[y * 320 + bd[r].x + x] == q;
-            }
-        }
-        int patterned = 0, patterned_ok = 0, any_seen = 0;
-        for (int t = 0; t < nt; t++) {
-            bool uniform = (cmask[t] & (cmask[t] - 1)) == 0;
-            pass[t] = seen[t] > 0 ? same[t] * 10 >= seen[t] * 6 : hid[t] > 0;
-            any_seen += seen[t];
-            if (!uniform && seen[t] > 0) { patterned++; patterned_ok += pass[t]; }
-        }
-        if (!any_seen) continue;
-        bool region_ok = patterned ? patterned_ok * 3 >= patterned : true;
-        if (!region_ok) continue;
-        for (int t = 0; t < nt; t++)
-            if ((cmask[t] & (cmask[t] - 1)) == 0 && !region_ok) pass[t] = false;
-        for (int y = 0; y < 200; y++) {
-            int ry = RY(y);
-            if (ry < 0 || ry >= bd[r].h) continue;
-            int ryu = y > 0 ? RY(y - 1) : -1, ryd = y + 1 < 200 ? RY(y + 1) : -1;
-            for (int x = 0; x < W; x++) {
-                int sx = bd[r].x + x;
-                u8 q = bd[r].ref[ry * W + x];
-                if (q == 0xFE) { xrgb[y * 320 + sx] = bd[r].rgb[ry * W + x]; continue; }    /* always (overhang) */
-                if (q == 0xFF || idx[y * 320 + sx] != q || !pass[(ry / TS) * tw + x / TS] || blanked[q]) continue;
-                bool ok = true;
-                if (bd[r].strict) {                             /* the 4 neighbours (screen) still the picture */
-                    if (x > 0 && bd[r].ref[ry * W + x - 1] < 0xFE && idx[y * 320 + sx - 1] != bd[r].ref[ry * W + x - 1]) ok = false;
-                    if (x + 1 < W && bd[r].ref[ry * W + x + 1] < 0xFE && idx[y * 320 + sx + 1] != bd[r].ref[ry * W + x + 1]) ok = false;
-                    if (ryu == ry - 1 && ryu >= 0 && bd[r].ref[ryu * W + x] < 0xFE && idx[(y - 1) * 320 + sx] != bd[r].ref[ryu * W + x]) ok = false;
-                    if (ryd == ry + 1 && ryd < bd[r].h && bd[r].ref[ryd * W + x] < 0xFE && idx[(y + 1) * 320 + sx] != bd[r].ref[ryd * W + x]) ok = false;
-                }
-                if (ok) xrgb[y * 320 + sx] = bd[r].rgb[ry * W + x];
-            }
-        }
-    }
-#undef RY
-}
 
 static bool compose(u32 *xrgb)
 {
@@ -300,6 +74,11 @@ static bool compose(u32 *xrgb)
         if (n && fill * 10 >= n * 8) fill_only = true;
         else mask = NULL;
     }
+    /* ENHANCED (--amiga): the full-colour pixels, unless the screen is blanked (most registers black) */
+    const u32 *sh = sh_enabled() ? sh_pixels() : NULL;
+    int nblank = 0;
+    for (int i = 0; i < 16; i++) nblank += blanked[i];
+    if (nblank >= 8) sh = NULL;
     for (int y = 0; y < 200; y++) {
         u16 row = y < line_compare ? (u16)(start_addr + y * EGA_BYTES_PER_LINE)
                                    : (u16)((y - line_compare) * EGA_BYTES_PER_LINE);
@@ -311,12 +90,15 @@ static bool compose(u32 *xrgb)
             for (int bit = 7; bit >= 0; bit--) {
                 int c = (p0 >> bit & 1) | (p1 >> bit & 1) << 1 | (p2 >> bit & 1) << 2 | (p3 >> bit & 1) << 3;
                 u32 px = rgb[c];
+                if (sh) {
+                    u32 v = sh[(u32)o * 8 + (u32)(7 - bit)];
+                    if (v != SH_GAME && !blanked[c]) px = sh_colour(v, rgb);
+                }
                 if (m && m[b * 8 + 7 - bit] && (!fill_only || c == 15)) px &= 0x00FFFFFFu;
                 *out++ = px;
             }
         }
     }
-    apply_backdrops(xrgb);
     return true;
 }
 
@@ -329,6 +111,7 @@ void ega_show(void)
 void ega_init(void)
 {
     memset(planes, 0, sizeof planes);
+    sh_clear();
     start_addr = 0;
     line_compare = 200;
     ega_show();

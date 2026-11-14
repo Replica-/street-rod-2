@@ -10,7 +10,7 @@ folder (../StreetRod/release). The game's data is never packaged: the zip is che
 Needs MSYS2 mingw64 (objdump, the DLLs) and a Release build of sr2port with the launcher
 (-DSR2_LAUNCHER=ON). Run it from any shell; it uses the paths below only.
 
---with-amiga-gfx: a private package with gfx/amiga (made by tools/amiga_export.py from your Amiga disks) next to the
+--with-amiga-gfx: a private package with gfx (made by tools/amiga_export.py from your Amiga disks) next to the
 executables, for --amiga. That folder is game art: the zip is named ...-amiga-private and must not be published.
 """
 import argparse
@@ -124,11 +124,11 @@ def main():
         if FORBIDDEN.search(dst):
             sys.exit("package: game data would be packaged: " + dst)
     if args.with_amiga_gfx:                       # private package only (see above)
-        gfx = os.path.join(REPO, "gfx", "amiga")
+        gfx = os.path.join(REPO, "gfx")
         if not os.path.isfile(os.path.join(gfx, "cars.txt")):
-            sys.exit("package: gfx/amiga missing (python tools/amiga_export.py)")
+            sys.exit("package: gfx missing (python tools/amiga_export.py)")
         for f in sorted(os.listdir(gfx)):
-            files.append((os.path.join(gfx, f), "gfx/amiga/" + f))
+            files.append((os.path.join(gfx, f), "gfx/" + f))
         print("package: PRIVATE package with the Amiga game art - do not publish")
 
     for src, dst in files:

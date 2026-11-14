@@ -1,19 +1,19 @@
-/* ENHANCED (--amiga): the Amiga release's pictures and cars in place of the PC ones, in full colour.
+/* ENHANCED (--amiga): full-colour pictures and cars in place of the PC ones.
  *
- * The graphics are ready files in gfx/amiga next to the executable (or in the working directory), made once by
- * tools/amiga_export.py from the user's Amiga disks (game data, never committed):
- *   pic_<id>.bmp            replaces PC picture <id> (same size)
- *   car_<m>.bmp             the body of car model m: alpha 0 = background, 254 = paint, 255 = other
+ * The pictures are one folder of ready files, gfx/ next to the executable (or in the working directory), made by
+ * tools/amiga_export.py (game data, never committed):
+ *   pic_<id>.bmp            picture <id>: 32-bit = a full-colour version (the Amiga's), drawn instead of the game's;
+ *                           8-bit = the game's own picture (no full-colour version), drawn as the game draws it
+ *   car_<m>.bmp             the body of car model m: alpha 0 = see-through, 254 = paint, 255 = other
  *   car_<m>_<piece>.bmp     roof / rbump / fbump: chopped roof, stripped bumpers (same coding)
  *   cars.txt                where each piece goes on its body
- * Nothing is converted or guessed at run time.
  *
- * How they reach the screen: the game still draws its 16-colour picture (the game's own canvas); when it blits a
- * picture that has a replacement onto a screen page, the blitted rectangle goes to the frame composer with the
- * replacement (ega_add_backdrop), which shows it in full colour wherever the screen still shows that picture -
- * everything the game draws on top stays. Cars: car_compose turns the PC body into the Amiga body (in the game's 16
- * colours, so layout, wheels, driver, hot spots stay), and wherever the car is drawn (blit, parked copy, driving
- * animation) the full-colour body goes on top, its paint recoloured to the car's paint over the Amiga shading. */
+ * How they reach the screen: the game draws as always (its 16-colour planes stay the game's own state); the planes
+ * have a full-colour twin (platform/shadow.h) that every write keeps in step. Around each blit, sprite and car strip
+ * this module is the drawing source of the twin: a picture with a full-colour version gives its pixels, a car frame
+ * its full-colour body, a RAM copy of the screen the colours it was copied with. Cars: car_compose turns the PC body
+ * into the full-colour body's shape (in the game's 16 colours, so the game's masks, wheels, driver, hot spots fit);
+ * the twin gets the full-colour body, its paint recoloured to the live paint register when shown. */
 #include "enh/amiga.h"
 
 #include <SDL3/SDL.h>
@@ -23,17 +23,15 @@
 
 #include "host.h"
 #include "platform/ega.h"
+#include "platform/shadow.h"
 #include "platform/video.h"
-
-#include "enh/amiga_map.h"
-
-#define NMAP ((int)(sizeof amiga_map / sizeof amiga_map[0]))
 
 static bool on;
 static char dir[1024];
 
-typedef struct { uint32_t *px; int w, h; bool tried; } Img;   /* 0xAARRGGBB */
+typedef struct { uint32_t *px; int w, h; bool tried; } Img;   /* 0xAARRGGBB; px NULL: none (or the game's own) */
 
+/* a 32-bit picture file (an 8-bit one is the game's own picture: no full-colour version) */
 static bool load_img(Img *im, const char *name)
 {
     if (im->tried) return im->px != NULL;
@@ -42,6 +40,7 @@ static bool load_img(Img *im, const char *name)
     SDL_snprintf(path, sizeof path, "%s/%s", dir, name);
     SDL_Surface *s = SDL_LoadBMP(path);
     if (!s) return false;
+    if (SDL_BITSPERPIXEL(s->format) <= 8) { SDL_DestroySurface(s); return false; }
     SDL_Surface *c = SDL_ConvertSurface(s, SDL_PIXELFORMAT_ARGB8888);
     SDL_DestroySurface(s);
     if (!c) return false;
@@ -64,27 +63,29 @@ static struct { int x, y; bool has; } piece_at[22][PIECES];
 bool amiga_init(bool enable)
 {
     on = false;
-    if (!enable) return false;
-    const char *bases[2] = { SDL_GetBasePath(), "." };
-    for (int i = 0; i < 2 && !on; i++) {
-        if (!bases[i]) continue;
-        SDL_snprintf(dir, sizeof dir, "%s%sgfx/amiga", bases[i], i == 1 ? "/" : "");
-        char path[1200];
-        SDL_snprintf(path, sizeof path, "%s/cars.txt", dir);
-        FILE *f = fopen(path, "r");
-        if (!f) continue;
-        char line[128];
-        while (fgets(line, sizeof line, f)) {
-            int m, x, y;
-            char name[16];
-            if (line[0] == '#' || sscanf(line, "%d %15s %d %d", &m, name, &x, &y) != 4 || m < 0 || m >= 22) continue;
-            for (int k = 0; k < PIECES; k++)
-                if (!strcmp(name, piece_name[k])) { piece_at[m][k].x = x; piece_at[m][k].y = y; piece_at[m][k].has = true; }
+    if (enable) {
+        const char *bases[2] = { SDL_GetBasePath(), "." };
+        for (int i = 0; i < 2 && !on; i++) {
+            if (!bases[i]) continue;
+            SDL_snprintf(dir, sizeof dir, "%s%sgfx", bases[i], i == 1 ? "/" : "");
+            char path[1200];
+            SDL_snprintf(path, sizeof path, "%s/cars.txt", dir);
+            FILE *f = fopen(path, "r");
+            if (!f) continue;
+            char line[128];
+            while (fgets(line, sizeof line, f)) {
+                int m, x, y;
+                char name[16];
+                if (line[0] == '#' || sscanf(line, "%d %15s %d %d", &m, name, &x, &y) != 4 || m < 0 || m >= 22) continue;
+                for (int k = 0; k < PIECES; k++)
+                    if (!strcmp(name, piece_name[k])) { piece_at[m][k].x = x; piece_at[m][k].y = y; piece_at[m][k].has = true; }
+            }
+            fclose(f);
+            on = true;
         }
-        fclose(f);
-        on = true;
+        if (!on) fprintf(stderr, "amiga: no gfx folder (make it with tools/amiga_export.py); the game's colours stay\n");
     }
-    if (!on) fprintf(stderr, "amiga: no gfx/amiga folder (make it with tools/amiga_export.py); the PC pictures stay\n");
+    sh_enable(on);
     return on;
 }
 
@@ -108,22 +109,32 @@ void amiga_note_pic(FarPtr bmp, s16 id)
     track_next = (track_next + 1) % TRACK;
 }
 
-static Img pic_img[NMAP];
+#define PIC_IDS 4096
+static Img pic_img[PIC_IDS];
 
-static int map_of(FarPtr bmp)
+/* the full-colour version of the picture bitmap bmp holds (its size), or NULL */
+static const Img *pic_of(FarPtr bmp)
 {
     for (int i = 0; i < TRACK; i++)
-        if (track[i].seg == bmp.seg && track[i].off == bmp.off)
-            for (int m = 0; m < NMAP; m++)
-                if (amiga_map[m].pc_id == track[i].id) return m;
-    return -1;
+        if (track[i].seg == bmp.seg && track[i].off == bmp.off && track[i].id > 0 && track[i].id < PIC_IDS) {
+            Img *im = &pic_img[track[i].id];
+            char name[32];
+            SDL_snprintf(name, sizeof name, "pic_%d.bmp", track[i].id);
+            if (!load_img(im, name) || im->w != desc_w(bmp) || im->h != desc_h(bmp)) return NULL;
+            return im;
+        }
+    return NULL;
 }
 
-static int page_of(FarPtr page)
+static bool is_vram(FarPtr d) { return desc_planes(d).seg >= 0xA000; }
+
+static u32 vram_base(FarPtr d)
 {
-    FarPtr p = desc_planes(page);
-    return (int)(((u32)(p.seg - 0xA000) * 16u + p.off) / 0x2000);
+    FarPtr p = desc_planes(d);
+    return ((u32)(p.seg - 0xA000) * 16u + p.off) & 0xFFFFu;
 }
+
+static u32 stride_of(FarPtr d) { return desc_type(d) == DESC_TYPE_EGA ? EGA_BYTES_PER_LINE : desc_stride(d); }
 
 /* colour index of pixel (x, y) of a RAM bitmap; -1 = clear (mask bit) */
 static int bmp_px(FarPtr d, int x, int y)
@@ -149,59 +160,38 @@ static bool bmp_ok(FarPtr d)
 
 static Img car_img[22], piece_img[22][PIECES];
 static struct { uint32_t *px; int w, h, flags; } car_work[22];          /* body + this flags' pieces */
-static struct { u16 seg, off; int model, w, h, light, dark; uint8_t *fit; } car_frames[8];   /* fit: 0xFF = clear */
+/* a fitted car frame: per frame pixel its 16-colour index (fit, 0xFF = clear) and twin entry (px) */
+static struct { u16 seg, off; int w, h; uint8_t *fit; u32 *px; } car_frames[8];
 static int car_next;
 static struct { u16 seg, off, bseg, boff; int shift; } car_shifted[8];  /* frames 1..3 of a drive: base + shift */
+
+static void frame_free(int i)
+{
+    free(car_frames[i].fit);
+    free(car_frames[i].px);
+    car_frames[i].fit = NULL;
+    car_frames[i].px = NULL;
+}
 
 /* a picture loaded where a car frame was: the frame is gone (its memory is used again) */
 static void car_forget(FarPtr bmp)
 {
     for (int i = 0; i < 8; i++) {
-        if (car_frames[i].fit && car_frames[i].seg == bmp.seg && car_frames[i].off == bmp.off) {
-            free(car_frames[i].fit);
-            car_frames[i].fit = NULL;
-        }
+        if (car_frames[i].fit && car_frames[i].seg == bmp.seg && car_frames[i].off == bmp.off) frame_free(i);
         if (car_shifted[i].seg == bmp.seg && car_shifted[i].off == bmp.off) car_shifted[i].seg = car_shifted[i].off = 0;
     }
-}
-
-static void rgb_to_hsv(uint32_t c, float *h, float *s, float *v)
-{
-    float r = (float)(c >> 16 & 255) / 255.0f, g = (float)(c >> 8 & 255) / 255.0f, b = (float)(c & 255) / 255.0f;
-    float mx = r > g ? (r > b ? r : b) : (g > b ? g : b), mn = r < g ? (r < b ? r : b) : (g < b ? g : b), d = mx - mn;
-    *v = mx;
-    *s = mx > 0 ? d / mx : 0;
-    if (d <= 0) *h = 0;
-    else if (mx == r) *h = (g - b) / d + (g < b ? 6.0f : 0.0f);
-    else if (mx == g) *h = (b - r) / d + 2.0f;
-    else *h = (r - g) / d + 4.0f;
-    *h /= 6.0f;
-}
-
-static uint32_t hsv_to_rgb(float h, float s, float v)
-{
-    float r = v, g = v, b = v;
-    if (s > 0) {
-        float f6 = h * 6.0f;
-        int i = (int)f6;
-        float f = f6 - (float)i, p = v * (1 - s), q = v * (1 - s * f), t = v * (1 - s * (1 - f));
-        switch (i % 6) {
-        case 0: r = v; g = t; b = p; break;
-        case 1: r = q; g = v; b = p; break;
-        case 2: r = p; g = v; b = t; break;
-        case 3: r = p; g = q; b = v; break;
-        case 4: r = t; g = p; b = v; break;
-        default: r = v; g = p; b = q; break;
-        }
-    }
-    return 0xFF000000u | (uint32_t)(r * 255.0f + 0.5f) << 16 | (uint32_t)(g * 255.0f + 0.5f) << 8 |
-           (uint32_t)(b * 255.0f + 0.5f);
 }
 
 static u32 live_rgb(int i)
 {
     u8 v = ega_get_palette_reg(i & 15);
     return ega_palette[(v & 7) | (v >> 1 & 8)];
+}
+
+static float value_of(u32 c)
+{
+    int r = c >> 16 & 255, g = c >> 8 & 255, b = c & 255, m = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    return (float)m / 255.0f;
 }
 
 /* the body with the pieces flags asks for (pasted over their whole rectangle) */
@@ -240,16 +230,14 @@ static void paint_regs(const int *cnt, int *light, int *dark)
 {
     int a = 6, b = 7;
     if (cnt[12] + cnt[3] > cnt[6] + cnt[7]) { a = 12; b = 3; }
-    float h1, s1, v1, h2, s2, v2;
-    rgb_to_hsv(live_rgb(a), &h1, &s1, &v1);
-    rgb_to_hsv(live_rgb(b), &h2, &s2, &v2);
-    *light = v1 >= v2 ? a : b;
-    *dark = v1 >= v2 ? b : a;
+    bool al = value_of(live_rgb(a)) >= value_of(live_rgb(b));
+    *light = al ? a : b;
+    *dark = al ? b : a;
 }
 
 bool amiga_car_body(FarPtr frame, s16 model, s16 flags)
 {
-    if (!on || model < 0 || model >= 22 || desc_type(frame) == DESC_TYPE_EGA || !bmp_ok(frame)) return false;
+    if (!on || model < 0 || model >= 22 || is_vram(frame) || !bmp_ok(frame)) return false;
     FarPtr mk = desc_mask(frame);
     if (!(mk.seg || mk.off) || !car_build(model, flags)) return false;
     int w = desc_w(frame), h = desc_h(frame), aw = car_work[model].w, ah = car_work[model].h;
@@ -262,21 +250,26 @@ bool amiga_car_body(FarPtr frame, s16 model, s16 flags)
     int light, dark;
     paint_regs(cnt, &light, &dark);
     uint8_t *fit = malloc((size_t)w * h);
-    if (!fit) return false;
+    u32 *px = malloc((size_t)w * h * sizeof(u32));
+    if (!fit || !px) { free(fit); free(px); return false; }
     u32 live[16];
     for (int i = 0; i < 16; i++) live[i] = live_rgb(i);
     FarPtr pl = desc_planes(frame);
     u32 b = lin(pl.seg, pl.off), mb = lin(mk.seg, mk.off), st = desc_stride(frame), plane = st * (u32)h;
-    int ox = (w - aw) / 2, oy = h - ah;                               /* bottom and centre aligned */
+    /* the body fits the PC frame: scaled down if it is larger, bottom and centre aligned */
+    float sc = 1.0f;
+    if (aw > w) sc = (float)w / (float)aw;
+    if (ah * sc > h) sc = (float)h / (float)ah;
+    int sw = (int)(aw * sc + 0.5f), shh = (int)(ah * sc + 0.5f), ox = (w - sw) / 2, oy = h - shh;
     for (int y = 0; y < h; y++)
         for (int x = 0; x < w; x++) {
-            int ax = x - ox, ay = y - oy;
-            uint32_t a = (ax >= 0 && ay >= 0 && ax < aw && ay < ah) ? car_work[model].px[ay * aw + ax] : 0;
+            int ax = (int)((float)(x - ox) / sc), ay = (int)((float)(y - oy) / sc);
+            uint32_t a = (x >= ox && y >= oy && ax < aw && ay < ah) ? car_work[model].px[ay * aw + ax] : 0;
             uint8_t q = 0xFF;
+            u32 v = SH_GAME;
             if ((a >> 24) == 254) {                                   /* paint: the light or the dark register */
-                float hh, ss, vv;
-                rgb_to_hsv(a, &hh, &ss, &vv);
-                q = (uint8_t)(vv > 0.62f ? light : dark);
+                q = (uint8_t)(value_of(a) > 0.62f ? light : dark);
+                v = SH_PAINT(light) | (a & 0xFFFFFF);
             } else if ((a >> 24) == 255) {                            /* the nearest live colour */
                 long best = -1;
                 for (int i = 0; i < 16; i++) {
@@ -284,8 +277,10 @@ bool amiga_car_body(FarPtr frame, s16 model, s16 flags)
                              labs((long)(a >> 8 & 255) - (long)(live[i] >> 8 & 255)) + labs((long)(a & 255) - (long)(live[i] & 255));
                     if (best < 0 || d < best) { best = d; q = (uint8_t)i; }
                 }
+                v = SH_RGB | (a & 0xFFFFFF);
             }
             fit[y * w + x] = q;
+            px[y * w + x] = v;
             u32 o = (u32)y * st + (u32)(x >> 3);
             u8 bit = (u8)(0x80 >> (x & 7));
             for (int p = 0; p < 4; p++) {
@@ -295,28 +290,23 @@ bool amiga_car_body(FarPtr frame, s16 model, s16 flags)
             if (q == 0xFF) mem[mb + o] |= bit; else mem[mb + o] &= (u8)~bit;
         }
     for (int i = 0; i < 8; i++)
-        if (car_frames[i].fit && car_frames[i].seg == frame.seg && car_frames[i].off == frame.off) {
-            free(car_frames[i].fit);
-            car_frames[i].fit = NULL;
-        }
-    free(car_frames[car_next].fit);
+        if (car_frames[i].fit && car_frames[i].seg == frame.seg && car_frames[i].off == frame.off) frame_free(i);
+    frame_free(car_next);
     car_frames[car_next].seg = frame.seg;
     car_frames[car_next].off = frame.off;
-    car_frames[car_next].model = model;
     car_frames[car_next].w = w;
     car_frames[car_next].h = h;
-    car_frames[car_next].light = light;
-    car_frames[car_next].dark = dark;
     car_frames[car_next].fit = fit;
+    car_frames[car_next].px = px;
     car_next = (car_next + 1) % 8;
     return true;
 }
 
 /* a PC tyre picture: its black (colour 0) reaching the picture's edge goes see-through (the corners around the round
- * tyre, invisible on the PC's black floor, black blocks on the Amiga's grey one) */
+ * tyre, invisible on the PC's black floor, black blocks on a lighter one) */
 void amiga_tyre_edge_clear(FarPtr pic)
 {
-    if (!on || desc_type(pic) == DESC_TYPE_EGA || !bmp_ok(pic)) return;
+    if (!on || is_vram(pic) || !bmp_ok(pic)) return;
     FarPtr mk = desc_mask(pic);
     if (!(mk.seg || mk.off)) return;
     int w = desc_w(pic), h = desc_h(pic), n = 0;
@@ -352,119 +342,188 @@ void amiga_car_shifted(FarPtr frame, FarPtr base, int shift)
     next = (next + 1) % 8;
 }
 
-/* a car frame drawn (rect r) on page dpage: the full-colour body, paint recoloured to the live paint (hue and
- * saturation of the light paint register, the Amiga brightness), where the frame shows the body; parts of the body
- * outside the PC frame (taller roofs) are drawn always (0xFE) */
-static bool car_blit(FarPtr src, int dpage, const Rect *r)
+/* ---------------------------------------------------------------- sources: what a bitmap's pixels look like */
+
+enum { SRC_NONE, SRC_VRAM, SRC_CAR, SRC_BLOCK, SRC_PIC };
+typedef struct {
+    int kind;
+    FarPtr bmp;
+    u32 base, stride;            /* SRC_VRAM */
+    int f, shift;                /* SRC_CAR */
+    const u32 *block;            /* SRC_BLOCK: stride * 8 entries a row */
+    const Img *img;              /* SRC_PIC */
+    u32 mask;                    /* linear address of the mask, 0 = none or not used */
+} Src;
+
+static void src_resolve(Src *s, FarPtr bmp, bool masked)
 {
-    int f = -1, shift = 0;
-    FarPtr base = src;
+    memset(s, 0, sizeof *s);
+    s->bmp = bmp;
+    if (far_is_null(bmp)) return;
+    if (is_vram(bmp)) {
+        s->kind = SRC_VRAM;
+        s->base = vram_base(bmp);
+        s->stride = stride_of(bmp);
+        return;
+    }
+    if (!bmp_ok(bmp)) return;
+    s->stride = desc_stride(bmp);
+    FarPtr mk = desc_mask(bmp);
+    if (masked && (mk.seg || mk.off)) s->mask = lin(mk.seg, mk.off);
+    FarPtr base = bmp;
     for (int i = 0; i < 8; i++)
-        if ((src.seg || src.off) && car_shifted[i].seg == src.seg && car_shifted[i].off == src.off) {
+        if (car_shifted[i].seg == bmp.seg && car_shifted[i].off == bmp.off && (bmp.seg || bmp.off)) {
             base.seg = car_shifted[i].bseg;
             base.off = car_shifted[i].boff;
-            shift = car_shifted[i].shift;
+            s->shift = car_shifted[i].shift;
         }
     for (int i = 0; i < 8; i++)
-        if (car_frames[i].fit && car_frames[i].seg == base.seg && car_frames[i].off == base.off) f = i;
-    if (f < 0) return false;
-    int model = car_frames[f].model, w = car_frames[f].w, h = car_frames[f].h, sw = desc_w(src);
-    if (desc_h(src) != h || sw < w || sw > w + 8) return false;      /* not the car (its memory used again) */
-    if (!car_work[model].px || r->sx < 0 || r->sy < 0 || r->sx + r->w > sw || r->sy + r->h > h || !bmp_ok(src))
-        return true;
-    int aw = car_work[model].w, ah = car_work[model].h, ox = (w - aw) / 2, oy = h - ah;
-    int x0 = r->sx, y0 = r->sy, x1 = r->sx + r->w, y1 = r->sy + r->h;
-    if (r->sx == 0 && r->w >= w && r->sy == 0) {
-        if (ox + shift < x0) x0 = ox + shift;
-        if (ox + shift + aw > x1) x1 = ox + shift + aw;
-        if (oy < y0) y0 = oy;
-    }
-    if (r->dx + (x0 - r->sx) < 0) x0 = r->sx - r->dx;
-    if (r->dx + (x1 - r->sx) > 320) x1 = r->sx - r->dx + 320;
-    if (r->dy + (y0 - r->sy) < 0) y0 = r->sy - r->dy;
-    int RW = x1 - x0, RH = y1 - y0;
-    if (RW <= 0 || RH <= 0) return true;
-    uint8_t *ref = malloc((size_t)RW * RH);
-    uint32_t *rgb = malloc((size_t)RW * RH * sizeof(uint32_t));
-    if (!ref || !rgb) { free(ref); free(rgb); return true; }
-    float ph, ps, pv;
-    rgb_to_hsv(live_rgb(car_frames[f].light), &ph, &ps, &pv);
-    for (int y = 0; y < RH; y++)
-        for (int x = 0; x < RW; x++) {
-            int fx = x0 + x, fy = y0 + y, ax = fx - shift - ox, ay = fy - oy, k = y * RW + x;
-            uint32_t a = (ax >= 0 && ay >= 0 && ax < aw && ay < ah) ? car_work[model].px[ay * aw + ax] : 0;
-            bool amiga = (a >> 24) >= 254;
-            uint32_t col = 0xFF000000u | (a & 0xFFFFFF);
-            if ((a >> 24) == 254) {                                   /* paint over the Amiga shading */
-                float hh, ss, vv;
-                rgb_to_hsv(a, &hh, &ss, &vv);
-                col = hsv_to_rgb(ph, ps < 0.08f ? 0.0f : (ss < ps ? ss : ps), vv * (0.55f + 0.45f * pv));
-            }
-            rgb[k] = col;
-            bool in_frame = fx >= r->sx && fy >= r->sy && fx < r->sx + r->w && fy < r->sy + r->h;
-            if (!in_frame) { ref[k] = amiga ? 0xFE : 0xFF; continue; }
-            int c = bmp_px(src, fx, fy), bx = fx - shift;
-            uint8_t q = (bx >= 0 && bx < w) ? car_frames[f].fit[fy * w + bx] : 0xFF;
-            ref[k] = (c < 0 || q == 0xFF || c != q || !amiga) ? 0xFF : (uint8_t)c;
+        if (car_frames[i].fit && car_frames[i].seg == base.seg && car_frames[i].off == base.off &&
+            car_frames[i].h == desc_h(bmp) && desc_w(bmp) >= car_frames[i].w && desc_w(bmp) <= car_frames[i].w + 8) {
+            s->kind = SRC_CAR;
+            s->f = i;
+            return;
         }
-    if (getenv("SR_AMIGA_TRACE"))
-        fprintf(stderr, "amiga: car %d -> page %d at %d,%d %dx%d, paint %d/%d\n", model, dpage, r->dx + (x0 - r->sx),
-                r->dy + (y0 - r->sy), RW, RH, car_frames[f].light, car_frames[f].dark);
-    ega_add_backdrop(ref, rgb, dpage, r->dx + (x0 - r->sx), r->dy + (y0 - r->sy), RW, RH, BD_CAR);
-    return true;
+    s->shift = 0;
+    if ((s->img = pic_of(bmp)) != NULL) { s->kind = SRC_PIC; return; }
+    FarPtr pl = desc_planes(bmp);
+    if ((s->block = sh_block_get(pl.seg, pl.off, s->stride, desc_h(bmp))) != NULL) s->kind = SRC_BLOCK;
 }
 
-void amiga_car_shown(FarPtr frame, FarPtr page, int x, int y, int frow0, int rows)
+static bool src_clear(const Src *s, int x, int y)
 {
-    if (!on || desc_type(page) != DESC_TYPE_EGA) return;
-    Rect r;
-    r.w = (s16)desc_w(frame); r.h = (s16)rows; r.sx = 0; r.sy = (s16)frow0; r.dx = (s16)x; r.dy = (s16)y;
-    car_blit(frame, page_of(page), &r);
+    return s->mask && (mem[s->mask + (u32)y * s->stride + (u32)(x >> 3)] & (0x80 >> (x & 7)));
 }
 
-void amiga_on_sprite(FarPtr sprite, FarPtr page, const Rect *r)
+static u32 src_px(const Src *s, int x, int y)
 {
-    if (!on || !r || desc_type(page) != DESC_TYPE_EGA) return;
-    Rect rr = *r;
-    rr.dx = (s16)(r->dx & ~7);                                        /* the sprite goes to whole bytes (dx >> 3) */
-    car_blit(sprite, page_of(page), &rr);
+    if (x < 0 || y < 0) return SH_GAME;
+    switch (s->kind) {
+    case SRC_VRAM:
+        return sh_at(s->base, s->stride, x, y);
+    case SRC_CAR: {
+        int w = car_frames[s->f].w, bx = x - s->shift;
+        if (y >= car_frames[s->f].h || bx < 0 || bx >= w) return SH_GAME;
+        int c = bmp_px(s->bmp, x, y);
+        return c >= 0 && c == car_frames[s->f].fit[y * w + bx] ? car_frames[s->f].px[y * w + bx] : SH_GAME;
+    }
+    case SRC_BLOCK:
+        return (u32)x < s->stride * 8 && y < (int)desc_h(s->bmp) ? s->block[(u32)y * s->stride * 8 + (u32)x] : SH_GAME;
+    case SRC_PIC:
+        return x < s->img->w && y < s->img->h ? SH_RGB | (s->img->px[y * s->img->w + x] & 0xFFFFFF) : SH_GAME;
+    default:
+        return SH_GAME;
+    }
 }
 
-/* ---------------------------------------------------------------- blits onto the screen */
+/* ---------------------------------------------------------------- blits */
 
-void amiga_on_blit(FarPtr src, FarPtr dst, const Rect *r, bool masked)
+static struct { Src src; Rect c; u32 *prev; } blit;   /* prev: the RAM destination's entries before the blit */
+
+static u32 blit_fn(void *user, int x, int y)
 {
-    if (!on || !r || desc_type(dst) != DESC_TYPE_EGA) return;
-    int dpage = page_of(dst);
-    if (desc_type(src) == DESC_TYPE_EGA) {                            /* page to page: the regions go along */
-        ega_copy_backdrops(page_of(src), r->sx, r->sy, r->w, r->h, dpage, r->dx, r->dy);
+    (void)user;
+    int j = y - blit.c.dy, i = (x >> 3) - blit.c.dx;
+    if (j < 0 || j >= blit.c.h || i < 0 || i >= blit.c.w) return SH_NONE;
+    int sx = (blit.c.sx + i) * 8 + (x & 7), sy = blit.c.sy + j;
+    if (src_clear(&blit.src, sx, sy)) return SH_KEEP;
+    return src_px(&blit.src, sx, sy);
+}
+
+void amiga_blit_begin(FarPtr src, FarPtr dst, const Rect *r, bool masked)
+{
+    free(blit.prev);
+    blit.prev = NULL;
+    if (!on || !r || !clip_rect(src, dst, r, &blit.c)) { blit.src.kind = SRC_NONE; return; }
+    src_resolve(&blit.src, src, masked);
+    if (is_vram(dst)) {
+        u32 st = stride_of(dst);
+        sh_begin(vram_base(dst), st, (int)st * 8, desc_h(dst), blit_fn, NULL);
         return;
     }
-    if (car_blit(src, dpage, r)) return;
-    if (getenv("SR_AMIGA_TRACE"))
-        for (int i = 0; i < TRACK; i++)
-            if (track[i].seg == src.seg && track[i].off == src.off)
-                fprintf(stderr, "amiga: picture %d %dx%d -> page %d at %d,%d\n", track[i].id, r->w, r->h, dpage, r->dx, r->dy);
-    int m = map_of(src);
-    if (m < 0) {                                                      /* a PC picture over whole regions: they go */
-        if (!masked) ega_cover_backdrops(dpage, r->dx, r->dy, r->w, r->h);
-        return;
+    u32 st = desc_stride(dst);                     /* a RAM destination: its entries before, if it has any */
+    Src d;                                         /* what it shows now: a picture, an earlier copy */
+    src_resolve(&d, dst, false);
+    if (d.kind == SRC_PIC || d.kind == SRC_BLOCK) {
+        int W = (int)st * 8, h = desc_h(dst);
+        if ((blit.prev = malloc((size_t)W * h * sizeof(u32))) != NULL)
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < W; x++) blit.prev[y * W + x] = src_px(&d, x, y);
     }
-    char name[32];
-    SDL_snprintf(name, sizeof name, "pic_%d.bmp", amiga_map[m].pc_id);
-    Img *im = &pic_img[m];
-    int sw = desc_w(src), sh = desc_h(src);
-    if (!load_img(im, name) || im->w != sw || im->h != sh || !bmp_ok(src)) return;
-    int w = r->w, h = r->h, sx = r->sx, sy = r->sy;
-    if (w <= 0 || h <= 0 || sx < 0 || sy < 0 || sx + w > sw || sy + h > sh) return;
-    uint8_t *ref = malloc((size_t)w * h);
-    uint32_t *rgb = malloc((size_t)w * h * sizeof(uint32_t));
-    if (!ref || !rgb) { free(ref); free(rgb); return; }
-    for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++) {
-            int c = bmp_px(src, sx + x, sy + y);
-            ref[y * w + x] = c < 0 ? 0xFF : (uint8_t)c;               /* 0xFF: not part of the picture */
-            rgb[y * w + x] = 0xFF000000u | im->px[(sy + y) * sw + sx + x];
-        }
-    ega_add_backdrop(ref, rgb, dpage, r->dx, r->dy, w, h, BD_STRICT);
 }
+
+void amiga_blit_end(FarPtr src, FarPtr dst, const Rect *r)
+{
+    (void)src; (void)r;
+    sh_end();
+    if (!on || is_vram(dst) || (blit.src.kind == SRC_NONE && !blit.prev)) { free(blit.prev); blit.prev = NULL; return; }
+    /* a RAM copy of a screen (or of something with full colours): it keeps its entries */
+    u32 st = desc_stride(dst);
+    int h = desc_h(dst), W = (int)st * 8;
+    u32 *px = blit.prev ? blit.prev : calloc((size_t)W * h, sizeof(u32));
+    blit.prev = NULL;
+    if (!px) return;
+    for (int j = 0; j < blit.c.h; j++)
+        for (int x = 0; x < blit.c.w * 8; x++) {
+            int dx = blit.c.dx * 8 + x, dy = blit.c.dy + j, sx = blit.c.sx * 8 + x, sy = blit.c.sy + j;
+            if (dx >= W || dy >= h || src_clear(&blit.src, sx, sy)) continue;
+            px[dy * W + dx] = src_px(&blit.src, sx, sy);
+        }
+    FarPtr pl = desc_planes(dst);
+    sh_block_set(pl.seg, pl.off, st, h, px);
+    for (int i = 0; i < TRACK; i++)                 /* no longer just the picture it was loaded with */
+        if (track[i].seg == dst.seg && track[i].off == dst.off) track[i].id = 0;
+}
+
+/* ---------------------------------------------------------------- the driving car (sprite over its background) */
+
+static struct { Src spr, bg; Rect c; u16 bgrel, bgstr; int rows; } sprite;
+
+static u32 sprite_fn(void *user, int x, int y)
+{
+    (void)user;
+    int j = y - sprite.c.dy, i = (x >> 3) - sprite.c.dx;
+    if (j < 0 || j >= sprite.rows || i < 0 || i >= sprite.c.w) return SH_NONE;
+    int sx = (sprite.c.sx + i) * 8 + (x & 7), sy = sprite.c.sy + j;
+    if (!src_clear(&sprite.spr, sx, sy)) return src_px(&sprite.spr, sx, sy);
+    if (!sprite.bgstr) return SH_GAME;
+    u32 rel = (u32)sprite.bgrel + (u32)j * sprite.bgstr + (u32)i;    /* the background behind it */
+    return src_px(&sprite.bg, (int)(rel % sprite.bgstr) * 8 + (x & 7), (int)(rel / sprite.bgstr));
+}
+
+void amiga_sprite_begin(FarPtr spr, FarPtr dst, FarPtr bg, const Rect *c, u16 bgrel, u16 bgstr, s16 rows)
+{
+    if (!on || !is_vram(dst)) return;
+    src_resolve(&sprite.spr, spr, true);
+    src_resolve(&sprite.bg, bg, false);
+    sprite.c = *c;
+    sprite.bgrel = bgrel;
+    sprite.bgstr = bgstr;
+    sprite.rows = rows;
+    u32 st = desc_stride(dst);
+    sh_begin(vram_base(dst), st, (int)st * 8, desc_h(dst), sprite_fn, NULL);
+}
+
+void amiga_sprite_end(void) { sh_end(); }
+
+/* ---------------------------------------------------------------- car strips cached in VRAM */
+
+static struct { Src frame; int frow0; } cache;
+
+static u32 cache_fn(void *user, int x, int y)
+{
+    (void)user;
+    int fy = cache.frow0 + y;
+    if (src_clear(&cache.frame, x, fy)) return SH_KEEP;
+    return src_px(&cache.frame, x, fy);
+}
+
+void amiga_cache_begin(FarPtr frame, FarPtr tp, u16 stride, s16 rows, s16 frow0)
+{
+    if (!on || tp.seg < 0xA000) return;
+    src_resolve(&cache.frame, frame, true);
+    cache.frow0 = frow0;
+    sh_begin(((u32)(tp.seg - 0xA000) * 16u + tp.off) & 0xFFFFu, stride, stride * 8, rows, cache_fn, NULL);
+}
+
+void amiga_cache_end(void) { sh_end(); }

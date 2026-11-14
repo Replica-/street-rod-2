@@ -5,6 +5,7 @@
 
 #include "host.h"
 #include "platform/ega.h"
+#include "platform/shadow.h"
 
 VgaRegs vga;
 
@@ -29,6 +30,7 @@ void vga_mode_0d(void)
 {
     static const u8 pal[17] = { 0, 1, 2, 3, 4, 5, 6, 7, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0 };
     for (int k = 0; k < 4; k++) memset(ega_plane(k), 0, EGA_PLANE_SIZE);
+    sh_clear();
     memset(&vga, 0, sizeof vga);
     vga.map_mask = 0x0F;
     vga.dont_care = 0x0F;
@@ -117,9 +119,16 @@ void vga_wait_blank_then_retrace(void)
     host_wait_vretrace();
 }
 
+/* ENHANCED (--amiga, platform/shadow.h): the offset the latches were last loaded from, true until the next write */
+static u16 read_off;
+static bool read_fresh;
+
 u8 vga_rd(u16 off)
 {
     for (int k = 0; k < 4; k++) vga.latch[k] = ega_plane(k)[off];
+    sh_latch(off);
+    read_off = off;
+    read_fresh = true;
     if (vga.mode & 0x08) {                               /* read mode 1: colour compare */
         u8 differ = 0;
         for (int k = 0; k < 4; k++) {
@@ -134,22 +143,33 @@ u8 vga_rd(u16 off)
 
 void vga_wr(u16 off, u8 v)
 {
+    /* a byte just read from another offset written back unchanged to one plane: a CPU copy */
+    bool copy = read_fresh && read_off != off && (vga.mode & 3) == 0 && (vga.func & 0x18) == 0 &&
+                vga.bit_mask == 0xFF && (vga.map_mask == 1 || vga.map_mask == 2 || vga.map_mask == 4 ||
+                                         vga.map_mask == 8) && !(vga.enable_sr & vga.map_mask) &&
+                v == vga.latch[vga.read_map & 3];
+    read_fresh = false;
     for (int k = 0; k < 4; k++) {
         if (!(vga.map_mask >> k & 1)) continue;
         u8 *p = &ega_plane(k)[off];
-        u8 x;
+        u8 before = *p, x;
+        int kind = SH_W_DATA;
         switch (vga.mode & 3) {
         case 1:                                          /* latches, no function / bit mask */
             *p = vga.latch[k];
+            sh_write(off, before, *p, 0xFF, SH_W_LATCH, false);
             continue;
         case 2:
             x = (v >> k & 1) ? 0xFF : 0x00;
+            kind = SH_W_FILL;
             break;
         case 3:                                          /* VGA write mode 3: never used by the game */
             x = (vga.set_reset >> k & 1) ? 0xFF : 0x00;
+            kind = SH_W_FILL;
             break;
         default:
             x = (vga.enable_sr >> k & 1) ? ((vga.set_reset >> k & 1) ? 0xFF : 0x00) : v;
+            if (vga.enable_sr >> k & 1) kind = SH_W_FILL;
             break;
         }
         u8 l = vga.latch[k];
@@ -162,6 +182,9 @@ void vga_wr(u16 off, u8 v)
         u8 m = vga.bit_mask;
         if ((vga.mode & 3) == 3) m &= v;
         *p = (u8)((x & m) | (l & (u8)~m));
+        /* ENHANCED: the bits the bit mask keeps come from the latches (the same pixels when read from here) */
+        if (read_off != off && (u8)~m) sh_write(off, before, *p, (u8)~m, SH_W_LATCH, false);
+        sh_write(off, before, *p, m, kind, copy);
     }
     ega_touch();
 }

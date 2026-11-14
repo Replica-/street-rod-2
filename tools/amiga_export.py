@@ -1,26 +1,28 @@
-"""Amiga graphics for --amiga, converted once into ready files: python tools/amiga_export.py [OUT]
+"""The picture set for --amiga, made once into one folder of ready files: python tools/amiga_export.py [OUT]
 
-Reads the user's Amiga release (Game/amiga, the .adf disks extracted with tools/unadf.py) and writes OUT (default
-gfx/amiga, next to the executable in a package; game data, never committed):
+Reads the PC libraries (Game/LIB1-3) and the user's Amiga release (Game/amiga, the .adf disks extracted with
+tools/unadf.py) and writes OUT (default gfx, next to the executable in a package; game data, never committed):
 
-  pic_<id>.bmp      the Amiga picture that replaces PC picture <id> (sr2port/src/enh/amiga_map.h), full colour with
-                    its palette table, same size as the PC picture
+  pic_<id>.bmp      every picture the game draws, by its id (LIB1 #i = i + 1, LIB2 #i = 1000 + i, LIB3 #i = 2000 + i):
+                    the Amiga version where there is one (tools/amiga_map.h; 32-bit, full colour with its palette
+                    table, same size as the PC picture), else the PC picture (8-bit, the game's colour indices with
+                    the default palette; the game draws it in its own colours)
   car_<m>.bmp       the Amiga body of car model m (0..21), alpha 0 = see-through (Amiga colour 0, as the Amiga draws
                     its cars: the background and the windows), 254 = paint (recoloured to the car's paint at run
                     time, keeping its brightness), 255 = other
   car_<m>_<piece>.bmp  the customisation pieces (roof = chopped roof, rbump / fbump = stripped bumpers), same coding
   cars.txt          per model: the size of the body and where each piece goes on it ("<m> <piece> <x> <y>")
 
-All 32-bit BMPs (BI_BITFIELDS with an alpha mask), loadable by SDL_LoadBMP.
+32-bit BMPs have BI_BITFIELDS with an alpha mask; all load with SDL_LoadBMP.
 """
 import os, re, struct, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import amilib
+import amilib, srlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIB = os.path.join(ROOT, 'Game/amiga/disk2/lib.p')
 LIBSTART = os.path.join(ROOT, 'Game/amiga/disk1/libstart.p')
-MAP_H = os.path.join(ROOT, 'sr2port/src/enh/amiga_map.h')
+MAP_H = os.path.join(ROOT, 'tools/amiga_map.h')
 
 # the 22 car bodies in model order, then their pieces (roof, rear bumper, front bumper: the ones the model has)
 CAR_BODY = [181, 185, 189, 193, 197, 201, 205, 209, 213, 217, 221, 225, 229, 232, 236, 239, 243, 247, 251, 255, 259, 263]
@@ -43,6 +45,17 @@ def write_bmp(path, w, h, argb):
     head = b'BM' + struct.pack('<IHHI', 14 + len(info) + len(data), 0, 0, 14 + len(info))
     with open(path, 'wb') as f:
         f.write(head + info + data)
+
+
+def write_bmp8(path, w, h, idx, pal):
+    """8-bit bottom-up BMP with a 16-entry colour table (the colour indices kept)."""
+    pad = (-w) % 4
+    data = b''.join(bytes(idx[y * w:(y + 1) * w]) + bytes(pad) for y in range(h - 1, -1, -1))
+    table = b''.join(bytes((c[2], c[1], c[0], 0)) for c in pal)
+    info = struct.pack('<IiiHHIIiiII', 40, w, h, 1, 8, 0, len(data), 2835, 2835, len(pal), 0)
+    head = b'BM' + struct.pack('<IHHI', 14 + len(info) + len(table) + len(data), 0, 0, 14 + len(info) + len(table))
+    with open(path, 'wb') as f:
+        f.write(head + info + table + data)
 
 
 def rgb(c):
@@ -83,11 +96,22 @@ def car_argb(I, w, h, pal):
 
 
 def main():
-    out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, 'gfx/amiga')
+    out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, 'gfx')
     os.makedirs(out, exist_ok=True)
     libs = [amilib.read(LIB), amilib.read(LIBSTART)]
+    amiga = re.findall(r'\{ (\d+), (\d), (\d+), (\d+) \}', open(MAP_H).read())
+    have = {int(a[0]) for a in amiga}
     n = 0
-    for pid, lib, idx, pal in re.findall(r'\{ (\d+), (\d), (\d+), (\d+) \}', open(MAP_H).read()):
+    pcpal = srlib.game_palette(0x1DC8) if os.path.exists(os.path.join(ROOT, 'work/SR2_unp.exe')) else srlib.EGA16
+    for lib, base in (('LIB1', 1), ('LIB2', 1000), ('LIB3', 2000)):     # the PC pictures without an Amiga version
+        for p in srlib.read_lib(os.path.join(ROOT, 'Game', lib)):
+            pid = base + p['index']
+            if pid in have or p['w'] <= 0 or p['h'] <= 0:
+                continue
+            idx = srlib.to_indices(p, srlib.unpack(p['data'], p['tokens'], p['raw'], p['sr2']))
+            write_bmp8(os.path.join(out, 'pic_%d.bmp' % pid), p['w'], p['h'], idx, pcpal)
+            n += 1
+    for pid, lib, idx, pal in amiga:
         w, h, I = decode(libs[int(lib)], int(idx))
         if int(pid) in CROP:
             cx, cy, cw, ch = CROP[int(pid)]

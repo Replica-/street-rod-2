@@ -306,8 +306,6 @@ void fill_rect(FarPtr d, s16 x, s16 y, s16 w, s16 h)
         s16 yy = (s16)(y + i);
         drv_line(x, yy, x1, yy, c);
     }
-    if (desc_type(d) == DESC_TYPE_EGA && w > 0 && h > 0)   /* ENHANCED: --amiga pictures filled over are gone */
-        ega_cover_backdrops((int)(((u32)(pl.seg - 0xA000) * 16u + pl.off) / 0x2000), x, y, w, h);
     DSW(DS_g_draw_seg) = sseg;
     DSW(DS_g_draw_off) = soff;
 }

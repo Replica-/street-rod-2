@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "platform/ega.h"
 #include "platform/platform.h"
 #include "platform/vga.h"
 #include "platform/video.h"
@@ -366,7 +365,6 @@ static void cursor_redraw_pair(s16 x, s16 y, FarPtr front, FarPtr back)
             drv_blit(ds_far(DS_g_ptr_save), back, &r, 1);
         }
         DSW(DS_ptr_w) = 0;
-        ega_pointer_rect(0, 0, 0, 0);                                     /* ENHANCED: --amiga */
     } else {
         DSW(DS_ptr_last_y0) = 0x3E8;
         DSW(DS_ptr_last_x0) = 0x3E8;
@@ -391,7 +389,6 @@ static void cursor_redraw_pair(s16 x, s16 y, FarPtr front, FarPtr back)
         drv_draw_cursor(far_make(img.seg, (u16)(off + img.off)), far_make(msk.seg, (u16)(off + msk.off)),
                         desc_planes(ds_far(DS_g_ptr_save)), desc_planes(back),
                         (s16)(DSS(DS_ptr_x) >> sh), y, (s16)(DSS(DS_ptr_w) >> sh), DSS(DS_ptr_h));
-        ega_pointer_rect(DSS(DS_ptr_x), y, DSS(DS_ptr_w), DSS(DS_ptr_h));   /* ENHANCED: --amiga */
     }
     /* mirror */
     s16 x2 = (s16)(x + 0x0F), y2 = (s16)(y + 0x0F);

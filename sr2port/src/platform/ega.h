@@ -25,20 +25,6 @@ void ega_set_start(u16 offset);              /* CRTC start address (bytes) */
 void ega_set_line_compare(int line);         /* first screen row (0..199) shown from offset 0; >= 200 = off */
 void ega_touch(void);                        /* marks the screen changed (after writes to the planes) */
 void ega_set_page_mask(int page, const u8 *mask);   /* ENHANCED: 320x200 see-through mask of a page, NULL = none */
-/* ENHANCED (--amiga, see ega.c): full-colour pictures where the screen still shows the game's picture. Regions at
- * column x, row y of page `page` (plane offset / 2000h); add takes ownership of ref / rgb (malloc'd, ref 0xFF = not
- * part of the picture). */
-#define BD_STRICT 1                 /* a pixel counts only if its 4 neighbours still match too */
-#define BD_CAR 2                    /* a car: replaces the earlier car region of the page */
-#define BD_COPY 4                   /* carried along by a page-to-page copy: replaces nothing */
-void ega_add_backdrop(u8 *ref, u32 *rgb, int page, int x, int y, int w, int h, int flags);
-void ega_copy_backdrops(int spage, int sx, int sy, int w, int h, int dpage, int dx, int dy);
-void ega_drop_backdrops(int page, int x, int y, int w, int h);
-/* PC drawing (a fill, a picture without a replacement) over (x, y, w, h): the regions inside go, the others count the
- * pixels drawn over and go when 70 % of them are (a page built from several pieces) */
-void ega_cover_backdrops(int page, int x, int y, int w, int h);
-/* ENHANCED: where the mouse pointer is drawn (w = 0: none); its pixels do not decide whether a backdrop is on screen */
-void ega_pointer_rect(int x, int y, int w, int h);
 
 /* Palette register 0..15 = value as the attribute controller holds it: bits 0-2 = BGR, bit 4 =
  * intensity (the 200-line interpretation of mode 0Dh; the game ORs 10h into values 8..15), register 16 =

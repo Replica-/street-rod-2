@@ -50,15 +50,17 @@ typedef void (*FnSetColour)(s16);
 
 u16  drv_blit(FarPtr src, FarPtr dst, const Rect *r, u8 flags)
 {
+    amiga_blit_begin(src, dst, r, false);         /* ENHANCED: --amiga, the full-colour pixels */
     u16 v = ((FnBlit)drv_slot(0))(src, dst, r, flags);
-    amiga_on_blit(src, dst, r, false);            /* ENHANCED: --amiga */
+    amiga_blit_end(src, dst, r);
     return v;
 }
 void drv_blit_shifted(FarPtr src, FarPtr dst, const Rect *r) { ((FnBlitShifted)drv_slot(1))(src, dst, r); }
 s16  drv_blit_masked(FarPtr src, FarPtr dst, const Rect *r, s16 mode)
 {
+    amiga_blit_begin(src, dst, r, true);          /* ENHANCED: --amiga, the full-colour pixels */
     s16 v = ((FnBlitMasked)drv_slot(2))(src, dst, r, mode);
-    amiga_on_blit(src, dst, r, true);             /* ENHANCED: --amiga */
+    amiga_blit_end(src, dst, r);
     return v;
 }
 void drv_draw_text(FarPtr d, s16 x, s16 y, const char *s)
@@ -80,13 +82,7 @@ void drv_recolour_rect(FarPtr d, s16 from, s16 to, s16 x0, s16 y0, s16 x1, s16 y
 void drv_pal_black(void) { ((FnVoid)drv_slot(7))(); }
 void drv_pal_normal(void) { ((FnVoid)drv_slot(8))(); }
 s16  drv_anim_step(u16 anim) { return ((FnAnimStep)drv_slot(9))(anim); }
-s16  drv_blinds(FarPtr dst, FarPtr src)
-{
-    if (dst.seg >= 0xA000 && src.seg >= 0xA000)   /* ENHANCED: --amiga, the pictures go along (shown line by line) */
-        ega_copy_backdrops((int)(((u32)(src.seg - 0xA000) * 16u + src.off) / 0x2000), 0, 0, 320, 200,
-                           (int)(((u32)(dst.seg - 0xA000) * 16u + dst.off) / 0x2000), 0, 0);
-    return ((FnBlinds)drv_slot(10))(dst, src);
-}
+s16  drv_blinds(FarPtr dst, FarPtr src) { return ((FnBlinds)drv_slot(10))(dst, src); }
 void drv_slide_sprite(s16 top, s16 bottom, s16 x, s16 from, s16 to, FarPtr spr, FarPtr alt)
 {
     ((FnSlide)drv_slot(11))(top, bottom, x, from, to, spr, alt);
@@ -440,6 +436,7 @@ s16 ega_sprite_over_bg(FarPtr spr, FarPtr dst, FarPtr bg, const Tail *t, const R
     FarPtr bpl = desc_planes(bg);
     u16 bo = sstr == bgstr ? (u16)((u16)((u16)c.dy * bgstr) + bpl.off)            /* (sic) no x offset */
                            : (u16)((u16)((u16)c.sy * bgstr) + bpl.off + (u16)c.dx); /* (sic) */
+    amiga_sprite_begin(spr, dst, bg, &c, (u16)(bo - bpl.off), bgstr, hmain);   /* ENHANCED: --amiga */
     for (u16 mm = 1; mm < 9; mm <<= 1) {
         if (dstep == 0) { out(0x3C4, 2); out(0x3C5, (u8)mm); }
         rows_composite(dp, seg, so, mo, bo, (s16)sstr, c.w, hmain, (s16)bgstr, (s16)dstr);
@@ -447,6 +444,7 @@ s16 ega_sprite_over_bg(FarPtr spr, FarPtr dst, FarPtr bg, const Tail *t, const R
         so = (u16)(so + sstep);
         bo = (u16)(bo + bgstep);                                   /* the mask is not advanced */
     }
+    amiga_sprite_end();
     u16 ax = sstep;
     if (dstep == 0) { out(0x3C4, 2); out(0x3C5, 0x0F); ax = 0x0F; }
     if (trows > 0) {
@@ -756,11 +754,6 @@ s16 ega_anim_step(u16 a)
     if (DSS(DSW(a + 0x10)) < 0) {                 /* finished: copy the last page into the next one */
         u16 n = DSW(a + 0x12);
         ega_latch_copy(desc_planes(ds_far(n)), desc_planes(ds_far(DSW(n + 0x0E))), 0x28, 0xBE, 0, 0, 0x28);
-        {                                                         /* ENHANCED: --amiga, the regions go along */
-            FarPtr sp = desc_planes(ds_far(n)), dp = desc_planes(ds_far(DSW(n + 0x0E)));
-            ega_copy_backdrops((int)(((u32)(sp.seg - 0xA000) * 16u + sp.off) / 0x2000), 0, 0, 320, 0xBE,
-                               (int)(((u32)(dp.seg - 0xA000) * 16u + dp.off) / 0x2000), 0, 0);
-        }
         if (DSW(n + 0x0C) != 0) {
             u16 n2 = DSW(n + 0x0E), n3 = DSW(n2 + 0x0E);
             for (u16 i = 0; i < 8; i += 2) DSW(n2 + 4 + i) = DSW(n3 + 4 + i);
@@ -791,8 +784,6 @@ s16 ega_anim_step(u16 a)
             if (sprite_hspan_clip(DSS(DS_tiles6 + 4 * i), DSS(DS_tiles6 + 4 * i + 2), a, (s16 *)&r))
                 ega_sprite_over_bg(ds_far(ref), ds_far(n), bg, tail_at(DSW(ref + 4), &tl), &r);
         }
-        Rect full = { (s16)desc_w(ds_far(ref)), r.h, 0, 0, DSS(a + 0x0C), DSS(a + 0x0E) };
-        amiga_on_sprite(ds_far(ref), ds_far(n), &full);           /* ENHANCED: --amiga (bars stay in front) */
     } else if (DSW(DS_location) == 3) {           /* event 15: three tiles, each followed by its overlay */
         for (u16 i = 0; i < 3; i++) {
             if (sprite_hspan_clip(DSS(DS_tiles3 + 4 * i), DSS(DS_tiles3 + 4 * i + 2), a, (s16 *)&r))
@@ -800,14 +791,11 @@ s16 ega_anim_step(u16 a)
             modules.event15_overlay(ds_far(n), (s16)i);          /* 2925:1cae */
         }
         modules.event15_overlay(ds_far(n), 3);
-        Rect full = { (s16)desc_w(ds_far(ref)), r.h, 0, 0, DSS(a + 0x0C), DSS(a + 0x0E) };
-        amiga_on_sprite(ds_far(ref), ds_far(n), &full);           /* ENHANCED: --amiga (pumps stay in front) */
     } else {
         r.w = (s16)desc_w(ds_far(ref));
         r.sx = 0;
         r.dx = DSS(a + 0x0C);
         ega_sprite_over_bg(ds_far(ref), ds_far(n), bg, tail_at(DSW(ref + 4), &tl), &r);
-        amiga_on_sprite(ds_far(ref), ds_far(n), &r);              /* ENHANCED: --amiga car in motion */
     }
     u16 op = DSW(a + 0x0A);                       /* the overlay redrawn over the sprite */
     if (op != 0) {
