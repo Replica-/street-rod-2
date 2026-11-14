@@ -30,5 +30,6 @@ static const struct { short pc_id; unsigned char lib; short index; unsigned char
     { 2072, 0, 83, 1 }, { 2073, 0, 84, 1 }, { 2074, 0, 85, 1 },   /* their wheels straight, turned left, turned right */
     { 2021, 0, 87, 1 }, { 2023, 0, 88, 1 }, { 2024, 0, 89, 1 },
     { 2077, 0, 91, 1 }, { 2076, 0, 92, 1 }, { 2075, 0, 93, 1 },
+    { 2059, 0, 86, 1 }, { 2025, 0, 90, 1 },                   /* clock faces (automatic cars); 2060 has none */
     { 2005, 0, 67, 1 }, { 2002, 0, 39, 1 },                   /* rear-view mirror frame, windscreen backdrop */
 };

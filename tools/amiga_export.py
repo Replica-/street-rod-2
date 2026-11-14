@@ -12,8 +12,7 @@ tools/unadf.py) and writes OUT (default gfx, next to the executable in a package
                     time, keeping its brightness), 255 = other
   car_<m>_<piece>.bmp  the customisation pieces (roof = chopped roof, rbump / fbump = stripped bumpers), same coding
   cars.txt          per model: the size of the body and where each piece goes on it ("<m> <piece> <x> <y>")
-  hands_<w>.bmp     the driver's hands over the dashboard (320 x 90, alpha 0 = none) with steering wheel picture w
-                    (0 straight, 1 turned left, 2 turned right)
+  hand_l/r.bmp, arm_l/r.bmp  the driver's fists and reaching arms (alpha 0 = none), placed by the game (enh/amiga.c)
 
 32-bit BMPs have BI_BITFIELDS with an alpha mask; all load with SDL_LoadBMP.
 """
@@ -36,21 +35,28 @@ CAR_PAL = 7
 # the Amiga wheel sheets (4 turning frames side by side) for the PC tyre types DS:4D30 (1050-1053, 1014-1017, 1084-1087)
 WHEELS = [137, 135, 136]
 PAINT = set(range(1, 10)) | set(range(33, 42))     # table 7: the red ramp 810..F98 and its half-bright copies
-# PC pictures that are part of a full Amiga screen: the PC id -> (x, y, w, h) cut from the Amiga picture
+# PC pictures that are part of a full Amiga screen: the PC id -> (x, y, w, h) cut from the Amiga picture (outside it:
+# see-through)
 CROP = {3: (40, 40, 256, 97)}                       # the California Dreams logo, drawn at (40, 40) on the PC
 # the steering wheel's lower part (straight, turned left, turned right) of the three dashboards: the Amiga's 192 columns
 # lie at x 72 of the dashboard, the PC's 184 at x 80
 CROP.update({p: (8, 0, 184, 30) for p in (2072, 2073, 2074, 2021, 2023, 2024, 2077, 2076, 2075)})
+# the clock faces of automatic cars (over the tach): the Amiga oval's middle 40 columns (its ends are the tach's own
+# ring), the round one a row lower in the PC's 33 rows
+CROP.update({2059: (4, 0, 40, 25), 2025: (0, -1, 40, 33)})
+# the Amiga clock faces show hands (the game draws its own): their red pixels get the face's pixel mirrored through the
+# centre (the face is point-symmetric; the hands are not)
+CLOCKS = {2059, 2025}
 # PC pictures drawn over an Amiga picture that already shows them: written see-through (hidden, what is there stays)
 # race pictures whose Amiga colours 6 / 7 (and half-bright 38 / 39) are the car's paint (the dashboards' top band):
 # alpha 254 = recoloured to the car's paint at run time, as the cars
 PAINT_PICS = {2011, 2012, 2019}
-# the driver's hands, a layer over the dashboard in front of its needles (hands_<wheel>.bmp, 320 x 90, alpha 0 = none),
-# per wheel picture (0 straight, 1 turning left, 2 turning right): the Amiga hand pictures centred at (x, y) of the
-# dashboard. #79 / #80 the left / right fist on the rim where it meets the bottom of the screen, #81 the left arm pushing
-# the rim up on the left (turning right), #82 the right arm on the right (turning left). Their colours 6, 7, 8, 9, 11,
-# 12 and the half-bright ones are one skin ramp, lit to shadow (the Amiga sets 6-9 per screen band)
-HANDS = {0: [(79, 85, 71), (80, 260, 71)], 1: [(79, 85, 71), (82, 269, 59)], 2: [(81, 74, 59), (80, 260, 71)]}
+PAINT_ROWS = 16                                     # the band: lower down, colours 6 / 7 and the Amiga's band colour
+STRAY = (255, 0, 204)                               # (magenta here) are strays, given their left neighbour's colour
+# the driver's hands (placed over the dashboard by enh/amiga.c): #79 / #80 the left / right fist, #81 the left arm pushing
+# the rim up (turning right), #82 the right arm (turning left). Their colours 6, 7, 8, 9, 11, 12 and the half-bright ones
+# are one skin ramp, lit to shadow (the Amiga sets 6-9 per screen band)
+HANDS = {79: 'hand_l', 80: 'hand_r', 81: 'arm_l', 82: 'arm_r'}
 HAND_SKIN = {6: (250, 210, 170), 7: (236, 190, 148), 8: (218, 168, 126), 9: (196, 144, 104), 11: (170, 120, 84),
              12: (142, 98, 66), 39: (150, 108, 76), 40: (136, 96, 66), 41: (120, 82, 56), 43: (110, 74, 50),
              44: (88, 58, 38)}
@@ -165,29 +171,29 @@ def main():
             n += 1
     for pid, lib, idx, pal in amiga:
         w, h, I = decode(libs[int(lib)], int(idx))
+        p = amilib.exe_palette(int(pal), libs[int(lib)][int(idx)]['depth'])
+        if int(pid) in CLOCKS:
+            red = lambda c: p[c % len(p)][0] > 150 and p[c % len(p)][1] < 110
+            I = [I[(h - 1 - i // w) * w + w - 1 - i % w] if red(c) else c for i, c in enumerate(I)]
         if int(pid) in CROP:
             cx, cy, cw, ch = CROP[int(pid)]
-            I = [I[(cy + y) * w + cx + x] for y in range(ch) for x in range(cw)]
+            I = [I[(cy + y) * w + cx + x] if 0 <= cy + y < h and 0 <= cx + x < w else -1
+                 for y in range(ch) for x in range(cw)]
             w, h = cw, ch
-        p = amilib.exe_palette(int(pal), libs[int(lib)][int(idx)]['depth'])
-        a = lambda c: 0xFE000000 if int(pid) in PAINT_PICS and (c & 31) in (6, 7) else 0xFF000000
-        px = [a(c) | rgb(p[c % len(p)]) for c in I]
+        if int(pid) in PAINT_PICS:
+            for i, c in enumerate(I):
+                if i // w >= PAINT_ROWS and i % w and ((c & 31) in (6, 7) or p[c % len(p)] == STRAY):
+                    I[i] = I[i - 1]
+        a = lambda i, c: 0xFE000000 if int(pid) in PAINT_PICS and i // w < PAINT_ROWS and (c & 31) in (6, 7) else 0xFF000000
+        px = [0 if c < 0 else a(i, c) | rgb(p[c % len(p)]) for i, c in enumerate(I)]
         write_bmp(os.path.join(out, 'pic_%s.bmp' % pid), w, h, px)
         n += 1
     hp = list(amilib.exe_palette(1, libs[0][70]['depth']))
     for k, c in HAND_SKIN.items():
         hp[k] = c
-    for state, hands in HANDS.items():
-        px = [0] * (320 * 90)
-        for hand, cx, cy in hands:
-            hw, hh, HI = decode(libs[0], hand)
-            for y in range(hh):
-                for x in range(hw):
-                    c = HI[y * hw + x]
-                    tx, ty = cx - hw // 2 + x, cy - hh // 2 + y
-                    if c and 0 <= tx < 320 and 0 <= ty < 90:
-                        px[ty * 320 + tx] = 0xFF000000 | rgb(hp[c % len(hp)])
-        write_bmp(os.path.join(out, 'hands_%d.bmp' % state), 320, 90, px)
+    for hand, name in HANDS.items():
+        hw, hh, HI = decode(libs[0], hand)
+        write_bmp(os.path.join(out, '%s.bmp' % name), hw, hh, [0xFF000000 | rgb(hp[c % len(hp)]) if c else 0 for c in HI])
         n += 1
     pal = amilib.exe_palette(CAR_PAL, 6)
     lines = []

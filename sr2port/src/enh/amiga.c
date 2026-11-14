@@ -8,7 +8,7 @@
  *   car_<m>.bmp             the body of car model m: alpha 0 = see-through, 254 = paint, 255 = other
  *   car_<m>_<piece>.bmp     roof / rbump / fbump: chopped roof, stripped bumpers (same coding)
  *   cars.txt                where each piece goes on its body
- *   hands_<w>.bmp           the driver's hands over the dashboard with steering wheel picture w (amiga_hands)
+ *   hand_l/r, arm_l/r.bmp   the driver's fists and arms, placed over the dashboard here (amiga_hands)
  *
  * How they reach the screen: the game draws as always (its 16-colour planes stay the game's own state); the planes
  * have a full-colour twin (platform/shadow.h) that every write keeps in step. Around each blit, sprite and car strip
@@ -745,7 +745,19 @@ void amiga_paint_preview(u32 rgb, int index)
 #define KNOB_EASE_S 0.06f           /* seconds: how fast the knob catches up with the wheel */
 #define KNOB_MAX_SPEED 150.0f       /* wheel angle units a second at most (lock to lock in a third of a second) */
 
-static Img hands_img[3];
+/* The hands (hand_l / hand_r: fists, arm_l / arm_r: an arm reaching up): straight, both fists on the rim where it meets
+ * the bottom of the screen; turning left the right arm pushes the rim up on the right, turning right the left arm on
+ * the left. The fists ride the rim (a circle about (RIM_X, RIM_Y)) with the knob's angle, HAND_FOLLOW of it: turning
+ * left the left fist goes down, turning right the right one. */
+#define RIM_X 170.0f
+#define RIM_Y 92.2f
+#define RIM_R 87.6f                 /* the fists' centres */
+#define FIST_DEG 76.0f              /* from the top, either side */
+#define HAND_FOLLOW 0.35f
+enum { HAND_L, HAND_R, ARM_L, ARM_R, HANDS };
+static const char *hand_file[HANDS] = { "hand_l.bmp", "hand_r.bmp", "arm_l.bmp", "arm_r.bmp" };
+static const float arm_at[2][2] = { { 74, 59 }, { 269, 59 } };   /* the arms' centres */
+static Img hand_img[HANDS];
 static int hands_w = -1, knob_to;
 static float knob_at;
 static Uint64 knob_t;
@@ -810,13 +822,24 @@ static void knob_draw(float cx, float cy)
         }
 }
 
+/* hand picture i centred at (cx, cy) of the layer, in front */
+static void hand_put(int i, float cx, float cy)
+{
+    const Img *im = &hand_img[i];
+    int x0 = (int)SDL_floorf(cx - (float)im->w / 2 + 0.5f), y0 = (int)SDL_floorf(cy - (float)im->h / 2 + 0.5f);
+    for (int y = 0; y < im->h; y++)
+        for (int x = 0; x < im->w; x++) {
+            u32 c = im->px[y * im->w + x];
+            int tx = x0 + x, ty = y0 + y;
+            if (c >> 24 && tx >= 0 && tx < 320 && ty >= 0 && ty < 90) layer[ty * 320 + tx] = c;
+        }
+}
+
 const u32 *amiga_hands_layer(void)
 {
     if (!on || hands_w < 0 || hands_w > 2) return NULL;
-    char name[32];
-    SDL_snprintf(name, sizeof name, "hands_%d.bmp", hands_w);
-    Img *im = &hands_img[hands_w];
-    if (!load_img(im, name) || im->w != 320 || im->h != 90) return NULL;
+    for (int i = 0; i < HANDS; i++)
+        if (!load_img(&hand_img[i], hand_file[i])) return NULL;
     Uint64 now = SDL_GetTicksNS();
     float dt = knob_t ? (float)(now - knob_t) / 1e9f : 0.0f;
     knob_t = now;
@@ -829,7 +852,11 @@ const u32 *amiga_hands_layer(void)
     float kx, ky;
     knob_xy(knob_at, &kx, &ky);
     knob_draw(kx + 0.5f, ky + 0.5f);
-    for (int i = 0; i < 320 * 90; i++)
-        if (im->px[i] >> 24) layer[i] = im->px[i];          /* the hands in front */
+    float turn = SDL_atan2f(kx - RIM_X, RIM_Y - ky) * HAND_FOLLOW;   /* the wheel's turn (radians, + = right) */
+    const float fist = FIST_DEG * 3.14159265f / 180.0f;
+    if (hands_w == 2) hand_put(ARM_L, arm_at[0][0], arm_at[0][1]);
+    else hand_put(HAND_L, RIM_X + RIM_R * SDL_sinf(turn - fist), RIM_Y - RIM_R * SDL_cosf(turn - fist));
+    if (hands_w == 1) hand_put(ARM_R, arm_at[1][0], arm_at[1][1]);
+    else hand_put(HAND_R, RIM_X + RIM_R * SDL_sinf(turn + fist), RIM_Y - RIM_R * SDL_cosf(turn + fist));
     return layer;
 }
