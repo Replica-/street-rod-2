@@ -25,8 +25,9 @@ LIBSTART = os.path.join(ROOT, 'Game/amiga/disk1/libstart.p')
 MAP_H = os.path.join(ROOT, 'tools/amiga_map.h')
 
 # the 22 car bodies in model order, then their pieces (roof, rear bumper, front bumper: the ones the model has)
-CAR_BODY = [181, 185, 189, 193, 197, 201, 205, 209, 213, 217, 221, 225, 229, 232, 236, 239, 243, 247, 251, 255, 259, 263]
-CAR_AFTER = CAR_BODY[1:] + [264]
+CAR_BODY = [181, 185, 189, 193, 197, 201, 205, 209, 213, 247, 221, 225, 229, 232, 236, 239, 243, 217, 251, 255, 259, 263]   # 9 / 17 by their PC pictures
+_S = sorted(CAR_BODY) + [264]
+CAR_AFTER = [_S[_S.index(b) + 1] for b in CAR_BODY]   # the next body in the library: the pieces lie between
 # the pieces each PC model has (SR2_DATA overlays block: roof, rear bumper, front bumper; -1 = none)
 PC_HAS = {10: ('rbump', 'fbump'), 12: ('roof', 'rbump'), 14: ('roof', 'rbump'), 21: ()}
 CAR_PAL = 7

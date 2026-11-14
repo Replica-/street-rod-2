@@ -59,7 +59,7 @@ static bool load_img(Img *im, const char *name)
 #define PIECES 3                    /* roof, rear bumper, front bumper */
 static const char *piece_name[PIECES] = { "roof", "rbump", "fbump" };
 static const int piece_flag[PIECES] = { 4, 2, 1 };    /* car_compose flags: 4 chopped roof, 2 rear / 1 front stripped */
-static struct { int x, y; bool has; } piece_at[22][PIECES], arch_at[22][2];   /* arch: wheel centre x, arch top y */
+static struct { int x, y; bool has; } piece_at[22][PIECES];
 
 bool amiga_init(bool enable)
 {
@@ -80,8 +80,6 @@ bool amiga_init(bool enable)
                 if (line[0] == '#' || sscanf(line, "%d %15s %d %d", &m, name, &x, &y) != 4 || m < 0 || m >= 22) continue;
                 for (int k = 0; k < PIECES; k++)
                     if (!strcmp(name, piece_name[k])) { piece_at[m][k].x = x; piece_at[m][k].y = y; piece_at[m][k].has = true; }
-                for (int k = 0; k < 2; k++)
-                    if (name[0] == 'w' && name[5] == '0' + k && !name[6]) { arch_at[m][k].x = x; arch_at[m][k].y = y; arch_at[m][k].has = true; }
             }
             fclose(f);
             on = true;
@@ -166,7 +164,8 @@ static struct { uint32_t *px; int w, h, flags; } car_work[22];          /* body 
 /* a car frame: per frame pixel its 16-colour index (fit, 0xFF = clear) and twin entry (px) */
 static struct { u16 seg, off; int w, h; uint8_t *fit; u32 *px; } car_frames[8];
 static int car_next;
-static struct { bool on; int model, flags, w, h, light, dark; } car_job;   /* amiga_car_begin -> amiga_car_frames */
+static struct { bool on; int model, flags, w, h, light, dark, x0, y0, x1, y1; } car_job;   /* amiga_car_begin ->
+                                                       amiga_car_frames; x0..y1: the PC body's box */
 
 static void frame_free(int i)
 {
@@ -249,6 +248,16 @@ bool amiga_car_begin(FarPtr frame, s16 model, s16 flags)
             if (c >= 0) cnt[c]++;
         }
     paint_regs(cnt, &car_job.light, &car_job.dark);
+    car_job.x0 = w; car_job.y0 = h; car_job.x1 = 0; car_job.y1 = 0;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+            if (bmp_px(frame, x, y) >= 0) {
+                if (x < car_job.x0) car_job.x0 = x;
+                if (y < car_job.y0) car_job.y0 = y;
+                if (x + 1 > car_job.x1) car_job.x1 = x + 1;
+                if (y + 1 > car_job.y1) car_job.y1 = y + 1;
+            }
+    if (car_job.x1 <= car_job.x0 || car_job.y1 <= car_job.y0) return false;
     car_job.on = true;
     car_job.model = model;
     car_job.flags = flags;
@@ -257,24 +266,14 @@ bool amiga_car_begin(FarPtr frame, s16 model, s16 flags)
     return true;
 }
 
-/* where wheel k of the body goes: (centre x, arch top y) from cars.txt, else under the PC tyre at pc_x */
-static void wheel_at(int m, int k, int pc_x, float sc, int ox, int *cx, int *top)
-{
-    const uint32_t *B = car_work[m].px;
-    int aw = car_work[m].w, ah = car_work[m].h;
-    if (arch_at[m][k].has) { *cx = arch_at[m][k].x; *top = arch_at[m][k].y; return; }
-    *cx = (int)((float)(pc_x + 16 - ox) / sc);
-    *top = ah;
-    for (int x = *cx - 12; x <= *cx + 12; x++)            /* the arch's top: the lowest body row there, highest */
-        for (int y = ah - 1; y >= 0; y--)
-            if (x >= 0 && x < aw && (B[y * aw + x] >> 24)) { if (y < *top) *top = y; break; }
-}
-
-/* frame f of the car: the whole Amiga car (body, pieces, wheels turning) fitted into the frame bitmap, 2 * f pixels
- * to the right (the driving frames); the game's 16-colour planes and mask get its shape, the twin its colours */
+/* frame f of the car: the whole Amiga car laid over the PC car, as the game composes its own: the Amiga body (the
+ * same drawing) scaled onto the PC body's box, the Amiga wheels where the game draws its tyres (pc_x: left edge of the
+ * 32-pixel PC tyre, bottom on the frame's bottom), behind the body; 2 * f pixels to the right (the driving frames).
+ * The game's 16-colour planes and mask get its shape, the twin its colours. */
+#define PC_TYRE_W 32
 static void car_frame(FarPtr frame, int f, int tyre, int pc_x0, int pc_x1)
 {
-    int m = car_job.model, w = car_job.w, h = car_job.h, fw = desc_w(frame), fh = desc_h(frame);
+    int m = car_job.model, h = car_job.h, fw = desc_w(frame), fh = desc_h(frame);
     int aw = car_work[m].w, ah = car_work[m].h;
     const Img *wh = tyre >= 0 && tyre < 3 ? &wheel_img[tyre][f & 3] : NULL;
     if (wh) {
@@ -282,42 +281,39 @@ static void car_frame(FarPtr frame, int f, int tyre, int pc_x0, int pc_x1)
         SDL_snprintf(name, sizeof name, "wheel_%d_%d.bmp", tyre, f & 3);
         if (!load_img((Img *)wh, name)) wh = NULL;
     }
-    /* the whole car: body and wheels (below the body if they reach further down) */
-    float sc0 = 1.0f;
-    if (aw > w) sc0 = (float)w / (float)aw;
-    int cx[2], top[2], H = ah;
-    for (int k = 0; k < 2; k++) {
-        wheel_at(m, k, k ? pc_x1 : pc_x0, sc0, (w - (int)(aw * sc0)) / 2, &cx[k], &top[k]);
-        if (wh && top[k] - 3 + wh->h > H) H = top[k] - 3 + wh->h;
-    }
-    uint32_t *car = malloc((size_t)aw * H * sizeof(uint32_t));
-    if (!car) return;
-    memset(car, 0, (size_t)aw * H * sizeof(uint32_t));
-    for (int y = 0; y < ah; y++) memcpy(car + y * aw, car_work[m].px + y * aw, (size_t)aw * sizeof(uint32_t));
-    if (wh)
-        for (int k = 0; k < 2; k++)
-            for (int y = 0; y < wh->h; y++)
-                for (int x = 0; x < wh->w; x++) {
-                    uint32_t a = wh->px[y * wh->w + x];
-                    int tx = cx[k] - wh->w / 2 + x, ty = top[k] - 3 + y;
-                    if ((a >> 24) && tx >= 0 && tx < aw && ty >= 0 && ty < H) car[ty * aw + tx] = a;
-                }
-    /* fitted: as large as the PC frame allows, proportions kept, bottom and centre aligned */
-    float sc = 1.0f;
-    if (aw > w) sc = (float)w / (float)aw;
-    if (H * sc > h) sc = (float)h / (float)H;
-    int sw = (int)(aw * sc + 0.5f), shh = (int)(H * sc + 0.5f), ox = (w - sw) / 2 + 2 * f, oy = h - shh;
+    int bx0 = aw, by0 = ah, bx1 = 0, by1 = 0;                     /* the Amiga body's box */
+    for (int y = 0; y < ah; y++)
+        for (int x = 0; x < aw; x++)
+            if (car_work[m].px[y * aw + x] >> 24) {
+                if (x < bx0) bx0 = x;
+                if (y < by0) by0 = y;
+                if (x + 1 > bx1) bx1 = x + 1;
+                if (y + 1 > by1) by1 = y + 1;
+            }
+    if (bx1 <= bx0 || by1 <= by0) return;
+    int pw = car_job.x1 - car_job.x0, ph = car_job.y1 - car_job.y0;
+    int ww = PC_TYRE_W, whh = wh ? (wh->h * PC_TYRE_W + wh->w / 2) / wh->w : 0;
+    const int pcx[2] = { pc_x0, pc_x1 };
     uint8_t *fit = malloc((size_t)fw * fh);
     u32 *px = malloc((size_t)fw * fh * sizeof(u32));
-    if (!fit || !px) { free(fit); free(px); free(car); return; }
+    if (!fit || !px) { free(fit); free(px); return; }
     u32 live[16];
     for (int i = 0; i < 16; i++) live[i] = live_rgb(i);
     FarPtr pl = desc_planes(frame), mk = desc_mask(frame);
     u32 b = lin(pl.seg, pl.off), mb = lin(mk.seg, mk.off), st = desc_stride(frame), plane = st * (u32)fh;
     for (int y = 0; y < fh; y++)
         for (int x = 0; x < fw; x++) {
-            int ax = (int)((float)(x - ox) / sc), ay = (int)((float)(y - oy) / sc);
-            uint32_t a = (x >= ox && y >= oy && ax < aw && ay < H) ? car[ay * aw + ax] : 0;
+            int cx = x - 2 * f;
+            uint32_t a = 0;
+            if (cx >= car_job.x0 && cx < car_job.x1 && y >= car_job.y0 && y < car_job.y1) {   /* the body */
+                int ax = bx0 + (cx - car_job.x0) * (bx1 - bx0) / pw, ay = by0 + (y - car_job.y0) * (by1 - by0) / ph;
+                a = car_work[m].px[ay * aw + ax];
+            }
+            for (int k = 0; k < 2 && !(a >> 24) && wh; k++)          /* a wheel behind it */
+                if (cx >= pcx[k] && cx < pcx[k] + ww && y >= h - whh && y < h) {
+                    int wx = (cx - pcx[k]) * wh->w / ww, wy = (y - (h - whh)) * wh->h / whh;
+                    a = wh->px[wy * wh->w + wx];
+                }
             uint8_t q = 0xFF;
             u32 v = SH_GAME;
             if ((a >> 24) == 254) {                                   /* paint: the light or the dark register */
@@ -342,7 +338,6 @@ static void car_frame(FarPtr frame, int f, int tyre, int pc_x0, int pc_x1)
             }
             if (q == 0xFF) mem[mb + o] |= bit; else mem[mb + o] &= (u8)~bit;
         }
-    free(car);
     for (int i = 0; i < 8; i++)
         if (car_frames[i].fit && car_frames[i].seg == frame.seg && car_frames[i].off == frame.off) frame_free(i);
     frame_free(car_next);
