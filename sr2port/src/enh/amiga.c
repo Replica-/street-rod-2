@@ -295,7 +295,29 @@ static void car_frame(FarPtr frame, int f, int tyre, int pc_x0, int pc_x1)
     if (bx1 <= bx0 || by1 <= by0) return;
     int pw = car_job.x1 - car_job.x0, ph = car_job.y1 - car_job.y0;
     int ww = PC_TYRE_W, whh = wh ? (wh->h * PC_TYRE_W + wh->w / 2) / wh->w : 0;
-    const int pcx[2] = { pc_x0, pc_x1 };
+    int pcx[2] = { pc_x0, pc_x1 };
+    /* each wheel centred in its arch of the laid body: around the PC tyre's centre (+-26 columns), the columns whose
+     * lowest body row is at least half the arch's height above the deepest one there; the middle of that opening */
+    for (int k = 0; k < 2; k++) {
+        int c = pcx[k] + ww / 2, lowv[53], base = -1, dmax = 0, lo = -1, hi = -1;
+        for (int i = 0; i < 53; i++) {
+            int x = c - 26 + i;
+            lowv[i] = -1;
+            if (x < car_job.x0 || x >= car_job.x1) continue;
+            int ax = bx0 + (x - car_job.x0) * (bx1 - bx0) / pw;
+            for (int y = car_job.y1 - 1; y >= car_job.y0; y--) {
+                int ay = by0 + (y - car_job.y0) * (by1 - by0) / ph;
+                if (car_work[m].px[ay * aw + ax] >> 24) { lowv[i] = y; break; }
+            }
+            if (lowv[i] > base) base = lowv[i];
+        }
+        for (int i = 0; i < 53; i++)
+            if (lowv[i] >= 0 && base - lowv[i] > dmax) dmax = base - lowv[i];
+        if (dmax < 10) continue;                       /* no arch (a fender skirt over the wheel): the PC tyre's place */
+        for (int i = 0; i < 53; i++)
+            if (lowv[i] >= 0 && 2 * (base - lowv[i]) >= dmax) { if (lo < 0) lo = i; hi = i; }
+        pcx[k] = c - 26 + lo + (hi - lo + 1 - ww) / 2;
+    }
     uint8_t *fit = malloc((size_t)fw * fh);
     u32 *px = malloc((size_t)fw * fh * sizeof(u32));
     if (!fit || !px) { free(fit); free(px); return; }
