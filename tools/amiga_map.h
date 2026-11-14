@@ -27,5 +27,8 @@ static const struct { short pc_id; unsigned char lib; short index; unsigned char
     { 1176, 0, 174, 7 }, { 1177, 0, 175, 7 }, { 1178, 0, 176, 7 }, { 1179, 0, 177, 7 }, { 1180, 0, 178, 7 },
     { 1198, 0, 264, 7 },
     { 2011, 0, 70, 1 }, { 2012, 0, 78, 1 }, { 2019, 0, 77, 1 },   /* the three dashboards, steering wheels included */
+    { 2072, 0, 83, 1 }, { 2073, 0, 84, 1 }, { 2074, 0, 85, 1 },   /* their wheels straight, turned left, turned right */
+    { 2021, 0, 87, 1 }, { 2023, 0, 88, 1 }, { 2024, 0, 89, 1 },
+    { 2077, 0, 91, 1 }, { 2076, 0, 92, 1 }, { 2075, 0, 93, 1 },
     { 2005, 0, 67, 1 }, { 2002, 0, 39, 1 },                   /* rear-view mirror frame, windscreen backdrop */
 };

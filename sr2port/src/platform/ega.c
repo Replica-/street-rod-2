@@ -6,6 +6,7 @@
 #include <SDL3/SDL.h>
 
 #include "host.h"
+#include "enh/amiga.h"
 #include "platform/shadow.h"
 #include "r3d/r3d.h"
 
@@ -80,11 +81,13 @@ static bool compose(u32 *xrgb)
     int nblank = 0;
     for (int i = 0; i < 16; i++) nblank += blanked[i];
     if (nblank >= 8) sh = NULL;
+    const u32 *hands = sh ? amiga_hands_layer() : NULL;   /* in front of the dashboard (below the split) */
     for (int y = 0; y < 200; y++) {
         u16 row = y < line_compare ? (u16)(start_addr + y * EGA_BYTES_PER_LINE)
                                    : (u16)((y - line_compare) * EGA_BYTES_PER_LINE);
         u32 *out = xrgb + y * 320;
         const u8 *m = (mask && y < line_compare) ? mask + y * 320 : NULL;
+        const u32 *hr = (hands && y >= line_compare && y - line_compare < 90) ? hands + (y - line_compare) * 320 : NULL;
         for (int b = 0; b < EGA_BYTES_PER_LINE; b++) {
             u16 o = (u16)(row + b);
             u8 p0 = planes[0][o], p1 = planes[1][o], p2 = planes[2][o], p3 = planes[3][o];
@@ -95,6 +98,7 @@ static bool compose(u32 *xrgb)
                     u32 v = sh[(u32)o * 8 + (u32)(7 - bit)];
                     if (v > SH_THROUGH) px = sh_colour(v, rgb);
                 }
+                if (hr && hr[b * 8 + 7 - bit] >> 24) px = hr[b * 8 + 7 - bit];
                 if (m && m[b * 8 + 7 - bit] && (!fill_only || c == 15)) px &= 0x00FFFFFFu;
                 *out++ = px;
             }

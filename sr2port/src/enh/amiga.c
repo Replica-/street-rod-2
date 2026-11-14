@@ -8,6 +8,7 @@
  *   car_<m>.bmp             the body of car model m: alpha 0 = see-through, 254 = paint, 255 = other
  *   car_<m>_<piece>.bmp     roof / rbump / fbump: chopped roof, stripped bumpers (same coding)
  *   cars.txt                where each piece goes on its body
+ *   hands_<w>.bmp           the driver's hands over the dashboard with steering wheel picture w (amiga_hands)
  *
  * How they reach the screen: the game draws as always (its 16-colour planes stay the game's own state); the planes
  * have a full-colour twin (platform/shadow.h) that every write keeps in step. Around each blit, sprite and car strip
@@ -734,4 +735,25 @@ void amiga_paint_preview(u32 rgb, int index)
     sh_set_paint(6, dark, e6);
     sh_set_paint(7, rgb, e7);
     ega_touch();
+}
+
+/* ---------------------------------------------------------------- the driver's hands */
+
+static Img hands_img[3];
+static int hands_w = -1;
+
+void amiga_hands(int w)
+{
+    if (!on || w == hands_w) return;
+    hands_w = w;
+    ega_touch();
+}
+
+const u32 *amiga_hands_layer(void)
+{
+    if (!on || hands_w < 0 || hands_w > 2) return NULL;
+    char name[32];
+    SDL_snprintf(name, sizeof name, "hands_%d.bmp", hands_w);
+    Img *im = &hands_img[hands_w];
+    return load_img(im, name) && im->w == 320 && im->h == 90 ? im->px : NULL;
 }
