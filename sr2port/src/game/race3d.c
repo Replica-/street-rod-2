@@ -500,7 +500,7 @@ static void push_view(void)
     v.cam_x = (float)DSS(DS_cam_x);
     v.cam_y = (float)DSS(DS_cam_y);
     v.heading = (float)DSS(DS_heading);
-    v.height = (float)DSS(DS_cur_height);
+    v.height = (float)sub16(DSS(DS_cur_height), TRKS(TRK_HGT, DSS(DS_seg)));   /* 0 on the road; a fall off the edge */
     v.opp_pos = (float)DSS(DS_opp_seg) + (float)(DSS(DS_opp_seg_frac64) & 0x3F) / 64.0f;
     v.opp_lat = (float)DSS(DS_opp_lat);
     v.mode = MODE;

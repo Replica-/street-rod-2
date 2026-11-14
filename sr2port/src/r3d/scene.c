@@ -716,10 +716,11 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
     if (trk.aqueduct) build_channel(first, last, v);
     else build(first, last, v->mode);
 
-    /* eye: the original's camera is 0x7D0 - cam_y above the road, offset by the car's own height deviation */
+    /* eye: the original's camera is 0x7D0 - cam_y above the road, offset by the car's own height deviation (taken
+     * against the car's segment when pushed: a blended absolute height against the blended position's segment
+     * stepped at every segment boundary on a hill) */
     float ex, ey, ez;
-    int si = seg < 0 ? 0 : (seg >= R3D_TRACK_N ? R3D_TRACK_N - 1 : seg);
-    float above = (0x7D0 - v->cam_y) + (v->height - trk.hgt[si]) * HGT_UNIT;
+    float above = (0x7D0 - v->cam_y) + v->height * HGT_UNIT;
     track_point(v->pos, v->cam_x, above, &ex, &ey, &ez);
     float yaw = -v->heading * YAW_RAD;                    /* a larger heading looks left */
     fwd[0] = sinf(yaw); fwd[1] = cosf(yaw);                /* R2.3: the headlights point where the car points */

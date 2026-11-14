@@ -67,7 +67,7 @@ typedef struct {
     float cam_x;        /* lateral camera position (0xA00 = start lane) */
     float cam_y;        /* camera height above the road (0x76C at start) */
     float heading;      /* car heading (track YAW units) */
-    float height;       /* road height at the car (track HGT units) */
+    float height;       /* the car's height above its segment's road height (track HGT units; 0 on the road) */
     float opp_pos;      /* opponent position in segments, < 0 = none */
     float opp_lat;      /* opponent lateral position */
     int mode;           /* road mode DS:ADD6 */
