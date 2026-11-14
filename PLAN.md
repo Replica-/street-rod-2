@@ -1,7 +1,7 @@
 # Street Rod 2 Enhanced — plan
 
 ## Status
-Set up 2026-11-14 from the faithful port (`../street-rod-2` at 75326ff). Phase R1 (3D race view) done 2026-11-14. Next: **R2.2** (spray, tyre smoke).
+Set up 2026-11-14 from the faithful port (`../street-rod-2` at 75326ff). Phase R1 (3D race view) done 2026-11-14. Next: **R2.3** (dusk / night).
 
 ## User to-do
 | What | Why |
@@ -30,7 +30,7 @@ renderer instead of the original road routines; the dashboard, cockpit overlay a
 | Id | Task | Size | Status |
 |---|---|---|---|
 | R2.1 | Rain: particles, streaks on the windscreen, wet road (darker, reflections) | M | done 2026-11-14 (no reflections yet) |
-| R2.2 | Spray and tyre smoke behind cars | S | |
+| R2.2 | Spray and tyre smoke behind cars | S | done 2026-11-14 |
 | R2.3 | Fog / dusk / night lighting with headlights | M | |
 
 ## Later (from the faithful repo's Enhanced backlog)
@@ -53,5 +53,6 @@ Notes:
 - R1.7: the original's Aqueduct is straight and flat (aq_project_front uses the heading only), so the 3D channel is straight: floor 0x5C8..0xCF8, walls to 0x438 / 0xE88 at 340 above, plus the per-frame deformation a094 sets (DS:985E, A2B8, A7A6, A5FA, 9A5A, 9B14), camera x clamped 0x564..0xD5C, roll = atan2(DS:A540, DS:BA90). Flags 3726:4E62: joint lines, trough, wall openings, white bands. Opponent = the original's chosen (rotated) picture. Not done: pillars (0x80), low box (0x10), SR2_SHP format-B objects (0x20 / 0x40). Checked headless.
 - R1.8: page masks now also need the page's view area unchanged since the mask was made (checksum in ega.c), so a crash picture or the next screen drawn on that page shows whole. Bob's Drive-In run checked headless (town cruise 3D, the bungalow screen whole, the race 3D). `SR_SMOKE_3D=1 python tools/sr2_smoke.py` runs the smoke tests with the hidden OpenGL window: all 8 race tests ok with the 3D path, same timings as 2D; full suite (2D path) 15/15 ok.
 - R2.1: `--rain` (`r3d/rain.c`): 2500 world streaks in a 10000-unit box around the eye (fall 2500 units/s, slanted by the car's smoothed velocity), windscreen drops in screen space (drawn after the 3D scene, under the 2D cockpit), overcast sky, fog from 2500 over 30000, colours x0.72. Mirror gets the streaks, not the drops. Not done: road reflections.
+- R2.2: puffs (`rain.c`): soft camera-facing discs that grow, drift and fade; spray from a moving opponent's rear corners in the rain (60/s), smoke from our rear wheels while DS:72E0 (squeal) is set (30/s, seen mostly in the mirror); time-based emission.
 - Why 3D straight away: the 2D renderer only gets ~6 position updates a second (physics every 12th tick, frames every
   8 ticks), so smoothness needs interpolation either way; doing it in 3D also makes rain and effects possible.

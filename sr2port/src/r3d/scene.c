@@ -10,6 +10,7 @@
 
 #include <math.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -487,6 +488,38 @@ static void build_channel(int first, int last, const R3dView *v)
     }
 }
 
+/* R2.2: spray behind a moving opponent in the rain, smoke from our rear wheels while the tyres squeal; the emission
+ * rate follows time, not the frame rate */
+static void emit_puffs(const R3dView *v)
+{
+    static Uint64 last_ns;
+    static float last_opp = -1, acc_spray, acc_smoke;
+    Uint64 now = SDL_GetTicksNS();
+    float dt = last_ns ? (float)((double)(now - last_ns) / 1e9) : 0.0f;
+    if (dt > 0.1f) dt = 0.1f;
+    last_ns = now;
+    r3d_puffs_update();
+    float p[3], vel[3] = { 0, 60.0f, 0 };
+    if (rain && v->opp.vis) {
+        bool moving = last_opp >= 0 && v->opp.pos - last_opp > 0.0005f;
+        last_opp = v->opp.pos;
+        if (moving) {
+            for (acc_spray += dt * 60.0f; acc_spray >= 1.0f; acc_spray -= 1.0f) {
+                float side = (rand() & 1) ? 0.32f : -0.32f;
+                track_point(v->opp.pos - 0.04f, v->opp.lat + side * v->opp.w, 18.0f, &p[0], &p[1], &p[2]);
+                r3d_puff_emit(p, vel, 45.0f, 0.82f, 0.50f);
+            }
+        }
+    } else last_opp = -1;
+    if (v->squeal) {
+        for (acc_smoke += dt * 30.0f; acc_smoke >= 1.0f; acc_smoke -= 1.0f) {
+            float side = (rand() & 1) ? 260.0f : -160.0f;
+            track_point(v->pos - 0.12f, v->cam_x + side, 12.0f, &p[0], &p[1], &p[2]);
+            r3d_puff_emit(p, vel, 45.0f, 0.86f, 0.55f);
+        }
+    } else acc_smoke = 0;
+}
+
 void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
 {
     float sky[3] = { 0.36f, 0.56f, 0.86f }, haze[3] = { 0.70f, 0.80f, 0.92f };
@@ -547,6 +580,8 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
     scenery_draw(first, last, yaw, mvp, eye, haze);
     sprite_draw(&v->opp, yaw, mvp, eye, haze);
     sprite_draw(&v->tree, yaw, mvp, eye, haze);
+    if (!mirror) emit_puffs(v);
+    r3d_puffs_draw(mvp, yaw);
     if (rain) {                                            /* R2.1 */
         if (!mirror) r3d_rain_update(eye);
         r3d_rain_draw_world(mvp);

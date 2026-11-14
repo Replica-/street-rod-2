@@ -70,6 +70,7 @@ typedef struct {
     /* Aqueduct (R1.7, aq_project_front 18ec): floor edges, wall-top edges (lateral), wall-top and floor height
      * above the base road level, and the picture's roll (radians) */
     float aq_fl, aq_fr, aq_tl, aq_tr, aq_th, aq_floor, roll;
+    bool squeal;        /* R2.2: the tyres squeal (DS:72E0): tyre smoke */
 } R3dView;
 
 void r3d_view_push(const R3dView *v);

@@ -411,6 +411,7 @@ static void push_view(void)
     v.aq_fl = v.aq_fr = v.aq_tl = v.aq_tr = v.aq_th = v.aq_floor = v.roll = 0;
     if (drag()) v.height = 0;                              /* flat; the HGT pointer is not advanced there */
     if (MODE == 8) aq_view(&v);
+    v.squeal = DSW(DS_squeal) != 0;
     push_scenery();
     opp_sprite(&v.opp);
     tree_sprite(&v.tree);

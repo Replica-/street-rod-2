@@ -10,4 +10,9 @@ void r3d_rain_update(const float *eye);              /* once per displayed frame
 void r3d_rain_draw_world(const float *mvp);          /* streaks; depth test on, depth writes off */
 void r3d_rain_draw_screen(float aspect);             /* windscreen drops in the viewport */
 
+/* R2.2: puffs (spray, tyre smoke): world position, velocity (units / s), start size, grey level, opacity */
+void r3d_puff_emit(const float *pos, const float *vel, float size, float grey, float alpha);
+void r3d_puffs_update(void);                          /* once per displayed frame */
+void r3d_puffs_draw(const float *mvp, float cam_yaw);
+
 #endif

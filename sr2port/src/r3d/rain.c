@@ -170,3 +170,60 @@ void r3d_rain_draw_screen(float aspect)
     }
     if (n) draw(id, GL_TRIANGLES, n);
 }
+
+/* ---------------------------------------------------------------- puffs (R2.2: spray, tyre smoke) */
+
+#define PUFFS 400
+static struct { float x, y, z, vx, vy, vz, size, grey, alpha, age, life; bool on; } puff[PUFFS];
+static int puff_next;
+static Uint64 puff_ns;
+
+void r3d_puff_emit(const float *pos, const float *vel, float size, float grey, float alpha)
+{
+    int i = puff_next;
+    puff_next = (puff_next + 1) % PUFFS;
+    puff[i].x = pos[0]; puff[i].y = pos[1]; puff[i].z = pos[2];
+    puff[i].vx = vel[0] + frand(-80, 80); puff[i].vy = vel[1] + frand(0, 60); puff[i].vz = vel[2] + frand(-80, 80);
+    puff[i].size = size;
+    puff[i].grey = grey;
+    puff[i].alpha = alpha;
+    puff[i].age = 0;
+    puff[i].life = frand(0.5f, 1.1f);
+    puff[i].on = true;
+}
+
+void r3d_puffs_update(void)
+{
+    Uint64 now = SDL_GetTicksNS();
+    float dt = puff_ns ? (float)((double)(now - puff_ns) / 1e9) : 0.0f;
+    if (dt > 0.1f) dt = 0.1f;
+    puff_ns = now;
+    for (int i = 0; i < PUFFS; i++) {
+        if (!puff[i].on) continue;
+        puff[i].age += dt;
+        if (puff[i].age >= puff[i].life) { puff[i].on = false; continue; }
+        puff[i].x += puff[i].vx * dt; puff[i].y += puff[i].vy * dt; puff[i].z += puff[i].vz * dt;
+        float drag = 1.0f - 2.5f * dt;                     /* air slows them quickly */
+        puff[i].vx *= drag; puff[i].vz *= drag;
+        puff[i].size += 220.0f * dt;
+    }
+}
+
+void r3d_puffs_draw(const float *mvp, float cam_yaw)
+{
+    float rx = cosf(cam_yaw), rz = -sinf(cam_yaw);
+    int n = 0;
+    for (int i = 0; i < PUFFS && n + 24 <= MAX_FV; i++) {
+        if (!puff[i].on) continue;
+        float t = puff[i].age / puff[i].life, a = puff[i].alpha * (1.0f - t) * (1.0f - t), g = puff[i].grey;
+        float r = puff[i].size;
+        for (int k = 0; k < 8; k++) {                      /* a soft disc: opaque centre, clear rim */
+            float a0 = (float)k * 0.785398f, a1 = (float)(k + 1) * 0.785398f;
+            FVert c = { puff[i].x, puff[i].y, puff[i].z, g, g, g * 1.02f, a };
+            FVert p0 = { puff[i].x + rx * r * cosf(a0), puff[i].y + r * sinf(a0), puff[i].z + rz * r * cosf(a0), g, g, g, 0 };
+            FVert p1 = { puff[i].x + rx * r * cosf(a1), puff[i].y + r * sinf(a1), puff[i].z + rz * r * cosf(a1), g, g, g, 0 };
+            fv[n++] = c; fv[n++] = p0; fv[n++] = p1;
+        }
+    }
+    if (n) draw(mvp, GL_TRIANGLES, n);
+}
