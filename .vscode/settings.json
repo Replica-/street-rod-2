@@ -2,15 +2,15 @@
     "cmake.sourceDirectory": "${workspaceFolder}/sr2port",
     // Window colours for this project (Street Rod 2), so its VS Code window stands out from others.
     "workbench.colorCustomizations": {
-        "titleBar.activeBackground": "#0f5f6e",
-        "titleBar.activeForeground": "#ffffff",
-        "titleBar.inactiveBackground": "#0a3f49",
-        "titleBar.inactiveForeground": "#bfdde3",
-        "activityBar.background": "#0c4c58",
-        "activityBar.foreground": "#ffffff",
-        "activityBar.inactiveForeground": "#a8d4dc",
-        "statusBar.background": "#0f5f6e",
-        "statusBar.foreground": "#ffffff",
-        "statusBar.noFolderBackground": "#0f5f6e"
+        "titleBar.activeBackground": "#e8c217",
+        "titleBar.activeForeground": "#1a1a1a",
+        "titleBar.inactiveBackground": "#a8901f",
+        "titleBar.inactiveForeground": "#3a3420",
+        "activityBar.background": "#c9a814",
+        "activityBar.foreground": "#1a1a1a",
+        "activityBar.inactiveForeground": "#4a4220",
+        "statusBar.background": "#e8c217",
+        "statusBar.foreground": "#1a1a1a",
+        "statusBar.noFolderBackground": "#e8c217"
     }
 }
