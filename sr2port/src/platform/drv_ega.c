@@ -17,6 +17,7 @@
 #include "host.h"
 #include "enh/amiga.h"
 #include "platform/ega.h"
+#include "platform/shadow.h"
 #include "modules.h"
 #include "platform/platform.h"
 #include "platform/vga.h"

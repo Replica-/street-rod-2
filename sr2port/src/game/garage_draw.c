@@ -189,6 +189,12 @@ void car_compose(FarPtr *frames, s16 model, s16 flags, s16 driver, u16 tyre_pics
             s16 sh = (s16)(2 * i);
             bitmap_composite_behind(w, frames[i], (s16)(DSB(L) + sh), dy);
             bitmap_composite_behind(w, frames[i], (s16)(DSB((u16)(L + 1)) + sh), dy);
+            if (amiga) {                          /* ENHANCED: in front too, the arches do not match the PC tyres */
+                Rect r = { (s16)desc_w(w), (s16)desc_h(w), 0, 0, (s16)(DSB(L) + sh), dy };
+                bitmap_blit_masked_shift(w, frames[i], &r, 1);
+                r.dx = (s16)(DSB((u16)(L + 1)) + sh);
+                bitmap_blit_masked_shift(w, frames[i], &r, 1);
+            }
             arena_pop(1);
         }
     }

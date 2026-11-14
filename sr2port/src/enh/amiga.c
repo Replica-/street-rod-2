@@ -526,4 +526,7 @@ void amiga_cache_begin(FarPtr frame, FarPtr tp, u16 stride, s16 rows, s16 frow0)
     sh_begin(((u32)(tp.seg - 0xA000) * 16u + tp.off) & 0xFFFFu, stride, stride * 8, rows, cache_fn, NULL);
 }
 
-void amiga_cache_end(void) { sh_end(); }
+void amiga_cache_end(void)
+{
+    sh_end();
+}
