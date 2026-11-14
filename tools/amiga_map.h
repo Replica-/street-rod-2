@@ -1,8 +1,8 @@
 /* PC picture id -> Amiga picture (lib 0 = disk2/lib.p, 1 = disk1/libstart.p, index). Candidates from
  * tools/amiga_map.py (same size, same shape), checked by eye 2026-11-14 (work/amap1.png, amap2.png): car body pieces
  * and opponent cars left out (painted per car through the palette registers), wrong pairs dropped, the portraits in
- * order (Amiga = PC id - 1002). Race graphics (dashboards, sky, horizon, panorama, mirror, A-pillar, starter) left out:
- * the Amiga's are the same art in slightly other colours, and mixing them with the game's gauges left artefacts. pal = the STREET_ROD palette table, picked by eye (work/amap_pal7.png,
+ * order (Amiga = PC id - 1002). Race interior: the three dashboards (with their steering wheels), the mirror frame and
+ * the windscreen backdrop (table 1; the dashboards' top band is the car's paint); no Amiga A-pillar or gear box. pal = the STREET_ROD palette table, picked by eye (work/amap_pal7.png,
  * race_tables.png, start_tables.png): 7 for the town / garage / menus.
  * Numbers only; the pictures are the user's own files. */
 static const struct { short pc_id; unsigned char lib; short index; unsigned char pal; } amiga_map[] = {
@@ -26,4 +26,6 @@ static const struct { short pc_id; unsigned char lib; short index; unsigned char
     { 1171, 0, 169, 7 }, { 1172, 0, 170, 7 }, { 1173, 0, 171, 7 }, { 1174, 0, 172, 7 }, { 1175, 0, 173, 7 },
     { 1176, 0, 174, 7 }, { 1177, 0, 175, 7 }, { 1178, 0, 176, 7 }, { 1179, 0, 177, 7 }, { 1180, 0, 178, 7 },
     { 1198, 0, 264, 7 },
+    { 2011, 0, 70, 1 }, { 2012, 0, 78, 1 }, { 2019, 0, 77, 1 },   /* the three dashboards, steering wheels included */
+    { 2005, 0, 67, 1 }, { 2002, 0, 39, 1 },                   /* rear-view mirror frame, windscreen backdrop */
 };

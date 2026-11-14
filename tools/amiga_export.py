@@ -37,6 +37,9 @@ PAINT = set(range(1, 10)) | set(range(33, 42))     # table 7: the red ramp 810..
 # PC pictures that are part of a full Amiga screen: the PC id -> (x, y, w, h) cut from the Amiga picture
 CROP = {3: (40, 40, 256, 97)}                       # the California Dreams logo, drawn at (40, 40) on the PC
 # PC pictures drawn over an Amiga picture that already shows them: written see-through (hidden, what is there stays)
+# race pictures whose Amiga colours 6 / 7 (and half-bright 38 / 39) are the car's paint (the dashboards' top band):
+# alpha 254 = recoloured to the car's paint at run time, as the cars
+PAINT_PICS = {2011, 2012, 2019}
 HIDE = {1149}                                      # Burger's Bungalow: the man by the door (the Amiga picture has him)
 
 
@@ -153,7 +156,8 @@ def main():
             I = [I[(cy + y) * w + cx + x] for y in range(ch) for x in range(cw)]
             w, h = cw, ch
         p = amilib.exe_palette(int(pal), libs[int(lib)][int(idx)]['depth'])
-        write_bmp(os.path.join(out, 'pic_%s.bmp' % pid), w, h, [0xFF000000 | rgb(p[c % len(p)]) for c in I])
+        a = lambda c: 0xFE000000 if int(pid) in PAINT_PICS and (c & 31) in (6, 7) else 0xFF000000
+        write_bmp(os.path.join(out, 'pic_%s.bmp' % pid), w, h, [a(c) | rgb(p[c % len(p)]) for c in I])
         n += 1
     pal = amilib.exe_palette(CAR_PAL, 6)
     lines = []

@@ -446,6 +446,8 @@ static u32 src_px(const Src *s, int x, int y)
     case SRC_PIC:
         if (x >= s->img->w || y >= s->img->h) return SH_GAME;
         if (!(s->img->px[y * s->img->w + x] >> 24)) return SH_KEEP;   /* see-through: the picture is hidden there */
+        if ((s->img->px[y * s->img->w + x] >> 24) == 254)              /* the car's paint (the dashboards' top band) */
+            return SH_PAINT(6) | (s->img->px[y * s->img->w + x] & 0xFFFFFF);
         return SH_RGB | (s->img->px[y * s->img->w + x] & 0xFFFFFF);
     default:
         return SH_GAME;
