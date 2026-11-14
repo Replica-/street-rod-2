@@ -561,3 +561,151 @@ void amiga_cache_end(void)
 {
     sh_end();
 }
+
+/* ---------------------------------------------------------------- the paint swatch (paint job) */
+
+static const u32 swatch[AMIGA_SWATCH_N] = {
+    0xC81E1E, 0xFF5A28, 0xFF9614, 0xFFD228, 0xF0F0A0, 0x9BDC28, 0x28B43C, 0x146E3C, 0x28C8B4, 0x50B4FF,
+    0x1E64DC, 0x14288C, 0x7846C8, 0xC850C8, 0xFF8CB4, 0x8C1E3C, 0x8C5A32, 0xE6E6E6, 0x8C8C96, 0x282830,
+};
+#define SW_CW 16                                  /* cell width, height */
+#define SW_CH 10
+static struct { bool on; int x, y, pages[2]; u8 *planes[2]; u32 *px[2]; } sw;
+
+static void swatch_draw(int sel)
+{
+    u32 *sp = sh_pixels();
+    for (int pg = 0; pg < 2; pg++)
+        for (int j = 0; j < 2 * SW_CH + 2; j++)
+            for (int i = 0; i < 10 * SW_CW + 2; i++) {
+                int x = sw.x + i, y = sw.y + j;
+                if (x < 0 || x >= 320 || y < 0 || y >= 200) continue;
+                u32 o = ((u32)sw.pages[pg] * 0x2000u + (u32)y * EGA_BYTES_PER_LINE + (u32)(x >> 3)) & 0xFFFFu;
+                u8 bit = (u8)(0x80 >> (x & 7));
+                for (int p = 0; p < 4; p++) ega_plane(p)[o] &= (u8)~bit;    /* the game sees black */
+                int cx = (i - 1) / SW_CW, cy = (j - 1) / SW_CH, k = cy * 10 + cx;
+                bool edge = i == 0 || j == 0 || i == 10 * SW_CW + 1 || j == 2 * SW_CH + 1 ||
+                            (i - 1) % SW_CW == SW_CW - 1 || (j - 1) % SW_CH == SW_CH - 1;
+                bool frame = k == sel && ((i - 1) % SW_CW == 0 || (i - 1) % SW_CW >= SW_CW - 2 ||
+                                          (j - 1) % SW_CH == 0 || (j - 1) % SW_CH >= SW_CH - 2);
+                u32 v = edge ? 0x202020 : frame ? 0xFFFFFF : swatch[k];
+                sp[o * 8 + (u32)(x & 7)] = SH_RGB | v;
+            }
+    ega_touch();
+}
+
+void amiga_swatch_show(int x, int y, int sel)
+{
+    if (!on || sw.on) return;
+    sw.x = x;
+    sw.y = y;
+    sw.pages[0] = (int)(vram_base(g_front()) / 0x2000);
+    sw.pages[1] = (int)(vram_base(g_back()) / 0x2000);
+    for (int pg = 0; pg < 2; pg++) {                      /* what is there, to put back */
+        sw.planes[pg] = malloc(4 * 0x2000);
+        sw.px[pg] = malloc(0x2000 * 8 * sizeof(u32));
+        if (!sw.planes[pg] || !sw.px[pg]) return;
+        for (int p = 0; p < 4; p++) memcpy(sw.planes[pg] + p * 0x2000, ega_plane(p) + sw.pages[pg] * 0x2000, 0x2000);
+        memcpy(sw.px[pg], sh_pixels() + (u32)sw.pages[pg] * 0x2000u * 8, 0x2000 * 8 * sizeof(u32));
+    }
+    sw.on = true;
+    swatch_draw(sel);
+}
+
+void amiga_swatch_select(int sel)
+{
+    if (sw.on) swatch_draw(sel);
+}
+
+void amiga_swatch_hide(void)
+{
+    if (!sw.on) return;
+    for (int pg = 0; pg < 2; pg++) {                      /* only the swatch's rows go back */
+        for (int y = sw.y; y < sw.y + 2 * SW_CH + 2 && y < 200; y++) {
+            u32 o = (u32)y * EGA_BYTES_PER_LINE;
+            for (int p = 0; p < 4; p++)
+                memcpy(ega_plane(p) + sw.pages[pg] * 0x2000 + o, sw.planes[pg] + p * 0x2000 + o, EGA_BYTES_PER_LINE);
+            memcpy(sh_pixels() + ((u32)sw.pages[pg] * 0x2000u + o) * 8, sw.px[pg] + o * 8, EGA_BYTES_PER_LINE * 8 * sizeof(u32));
+        }
+        free(sw.planes[pg]);
+        free(sw.px[pg]);
+        sw.planes[pg] = NULL;
+        sw.px[pg] = NULL;
+    }
+    sw.on = false;
+    ega_touch();
+}
+
+int amiga_swatch_hit(int x, int y)
+{
+    if (!sw.on || x < sw.x + 1 || y < sw.y + 1) return -1;
+    int cx = (x - sw.x - 1) / SW_CW, cy = (y - sw.y - 1) / SW_CH;
+    return cx < 10 && cy < 2 ? cy * 10 + cx : -1;
+}
+
+u32 amiga_swatch_rgb(int i) { return i >= 0 && i < AMIGA_SWATCH_N ? swatch[i] : 0; }
+
+/* the swatch colours chosen, per car record (DGROUP offset), with the game's own colour index then: a record that
+ * has a different colour now (another save loaded) is not used. Kept in paint.cfg beside the gfx folder. */
+#define PAINT_MAX 32
+static struct { u16 car; int index; u32 rgb; } paint[PAINT_MAX];
+static int npaint;
+static bool paint_loaded;
+
+static void paint_path(char *out, size_t n) { SDL_snprintf(out, n, "%s/../paint.cfg", dir); }
+
+static void paint_load(void)
+{
+    if (paint_loaded) return;
+    paint_loaded = true;
+    char path[1200];
+    paint_path(path, sizeof path);
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    unsigned car, rgb;
+    int index;
+    while (npaint < PAINT_MAX && fscanf(f, "%x %d %x", &car, &index, &rgb) == 3) {
+        paint[npaint].car = (u16)car;
+        paint[npaint].index = index;
+        paint[npaint].rgb = rgb;
+        npaint++;
+    }
+    fclose(f);
+}
+
+void amiga_paint_set(u16 car, int index, u32 rgb)
+{
+    if (!on) return;
+    paint_load();
+    int k = 0;
+    for (int i = 0; i < npaint; i++)
+        if (paint[i].car != car) paint[k++] = paint[i];
+    npaint = k;
+    if (rgb && npaint < PAINT_MAX) { paint[npaint].car = car; paint[npaint].index = index; paint[npaint].rgb = rgb; npaint++; }
+    char path[1200];
+    paint_path(path, sizeof path);
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+    for (int i = 0; i < npaint; i++) fprintf(f, "%04x %d %06x\n", paint[i].car, paint[i].index, paint[i].rgb);
+    fclose(f);
+}
+
+void amiga_paint_apply(u16 car, int index)
+{
+    u32 rgb = 0;
+    if (on) {
+        paint_load();
+        for (int i = 0; i < npaint; i++)
+            if (paint[i].car == car && paint[i].index == index) rgb = paint[i].rgb;
+    }
+    sh_set_paint(6, rgb);
+    sh_set_paint(7, rgb);
+    ega_touch();
+}
+
+void amiga_paint_preview(u32 rgb)
+{
+    sh_set_paint(6, rgb);
+    sh_set_paint(7, rgb);
+    ega_touch();
+}

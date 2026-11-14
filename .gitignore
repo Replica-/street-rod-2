@@ -28,3 +28,4 @@ __pycache__/
 
 # Amiga graphics converted by tools/amiga_export.py (game data, never committed)
 gfx/
+paint.cfg

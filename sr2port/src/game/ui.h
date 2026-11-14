@@ -120,6 +120,8 @@ s16  ui_edit(s16 screen, s16 maxlen, char *buf);   /* 1a21:610c: text field of a
 
 /* ================================================================ input, waits, demo (ui_wait.c) */
 /* input_reset 0001:17ea and wait_click_or_key 1a21:0dca are declared in platform/platform.h. */
+/* ENHANCED: when set, a click is offered to it first; a non-zero result is what ui_wait returns */
+extern s16 (*ui_click_hook)(s16 x, s16 y);
 s16  ui_wait(s16 ticks_max);                  /* 0001:1d02: 0 timeout, 1000 DS:1F3A passed, 0x3EB any key / click, else a code */
 void wait_ticks(s16 n);                       /* 0001:3d80: ui_wait(30000) until n ticks pass or a key / click */
 void kbd_inject_scancode(u8 sc);              /* 0001:3245: dead copy of the INT 9 body (no callers); sc = scan code */

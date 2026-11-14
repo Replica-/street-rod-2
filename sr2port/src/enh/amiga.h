@@ -30,3 +30,15 @@ void amiga_cache_end(void);
  * whose arches are not known) in the game's 16 colours (shape, mask) and in full colour. */
 bool amiga_car_begin(FarPtr frame, s16 model, s16 flags);
 void amiga_car_frames(FarPtr *frames, s16 n, s16 tyre, s16 pc_x0, s16 pc_x1);
+/* paint job, --amiga: a swatch of AMIGA_SWATCH_N colours at (x, y) of the screen (both pages; sel framed), hit test
+ * (index or -1), its colours; the colour chosen for a car record (with the game's colour index then), applied to the
+ * player's car paint (registers 6 / 7) when that car is set up, or a preview */
+#define AMIGA_SWATCH_N 20
+void amiga_swatch_show(int x, int y, int sel);
+void amiga_swatch_select(int sel);
+void amiga_swatch_hide(void);
+int  amiga_swatch_hit(int x, int y);
+u32  amiga_swatch_rgb(int i);
+void amiga_paint_set(u16 car, int index, u32 rgb);
+void amiga_paint_apply(u16 car, int index);
+void amiga_paint_preview(u32 rgb);

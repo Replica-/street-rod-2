@@ -58,6 +58,8 @@ static bool in_hot_rect(s16 x, s16 y)
 /* 0001:1d02 ui_wait: waits max_ticks; returns 0 on timeout, 1000 when the deadline DS:1F3A passes, 0x3EB for any
  * key / click while DS:1F3E (key in DS:1F40) or a click with DS:1F4C, otherwise the code of the hot spot clicked or
  * the hot key pressed (the keyboard remap holds code - 0x32). */
+s16 (*ui_click_hook)(s16 x, s16 y);           /* ENHANCED: see ui.h */
+
 s16 ui_wait(s16 max_ticks)
 {
     s16 k;
@@ -108,6 +110,10 @@ s16 ui_wait(s16 max_ticks)
             if (DSW(DS_click_returns) != 0) {                   /* a message box is up: any click ends the wait */
                 DSW(DS_last_key) = 0;
                 return 0x3EB;
+            }
+            if (ui_click_hook) {                                /* ENHANCED: e.g. the --amiga paint swatch */
+                s16 id = ui_click_hook(cx, cy);
+                if (id != 0) return id;
             }
             if (DSS(DS_ui_depth) != 0) {                        /* a menu is active */
                 s16 id;

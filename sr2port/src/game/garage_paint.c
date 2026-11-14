@@ -2,6 +2,9 @@
  * From port/spec/garage.md, checked against the disassembly. SR1 base: srport garage_main.c. */
 #include "game/ds_screens.h"
 #include "enh/amiga.h"
+#include "platform/ega.h"
+
+#include <stdlib.h>
 
 /* 0001:672c set_paint_palette: registers 6 / 7 of the EGA palette = PAINT[colour] (DS:4D1E, 3 bytes per colour:
  * reg6, reg7, "See it" strip background), plus the shadow copies of the palette table. Only on EGA/VGA drivers. */
@@ -18,6 +21,30 @@ void set_paint_palette(s16 colour)
         DSB(DS_GS_PAL_SHADOW2) = DSB(p);
         DSB((u16)(DS_GS_PAL_SHADOW2 + 1)) = DSB((u16)(p + 1));
     }
+    if (amiga_active() && gs_cur_car() != 0) amiga_paint_apply(gs_cur_car(), colour);   /* ENHANCED: a swatch colour */
+}
+
+/* ENHANCED (--amiga): the swatch's clicks come back as SWATCH_CODE + index */
+#define SWATCH_CODE 0x200
+static s16 swatch_click(s16 x, s16 y)
+{
+    int k = amiga_swatch_hit(x, y);
+    return k >= 0 ? (s16)(SWATCH_CODE + k) : 0;
+}
+
+/* the game's paint colour nearest to rgb (its "See it" strip colour, DS:PAINT + 2) */
+static s16 nearest_paint(u32 rgb)
+{
+    s16 best = 0;
+    long bd = -1;
+    for (s16 i = 0; i < 6; i++) {
+        u8 r = DSB((u16)(DS_PAINT + 3 * i));                       /* reg 6 value: 200-line IRGB */
+        u32 c = ega_palette[(r & 7) | (r >> 1 & 8)];
+        long d = labs((long)(c >> 16 & 255) - (long)(rgb >> 16 & 255)) + labs((long)(c >> 8 & 255) - (long)(rgb >> 8 & 255)) +
+                 labs((long)(c & 255) - (long)(rgb & 255));
+        if (bd < 0 || d < bd) { bd = d; best = i; }
+    }
+    return best;
 }
 
 /* 0001:6d5e paint_job: screen 13 (1 Previous colour, 2 Next colour, 3 Go ahead, -23 Forget it). Palette entry 12
@@ -31,16 +58,31 @@ void paint_job(void)
     FarPtr bg = ui_save_bg(13, &x, &y, 2);
     ui_push(13);
     s16 i = DSC((u16)(gs_cur_car() + CR_COLOUR));
-    s16 b;
+    s16 b, sw = -1;                                                /* ENHANCED: the swatch colour chosen, -1 none */
+    if (amiga_active()) {                                          /* ENHANCED: a swatch above the dialog */
+        amiga_swatch_show(x + 2, y - 24, -1);
+        ui_click_hook = swatch_click;
+    }
     for (;;) {
         ega_set_palreg(12, DSB((u16)(DS_PAINT + 3 * i)));
-        if (amiga_active()) set_paint_palette(i);   /* ENHANCED: the full-colour garage's can keeps its colour: the car
-                                                     * itself shows the paint */
+        if (amiga_active()) {                                      /* ENHANCED: the full-colour garage's can keeps its
+                                                                    * colour: the car itself shows the paint */
+            set_paint_palette(i);
+            if (sw >= 0) amiga_paint_preview(amiga_swatch_rgb(sw));
+            amiga_swatch_select(sw);
+        }
         do b = ui_wait(3000); while (b == 0);
-        if (b == 1) { if (--i < 0) i = 5; continue; }
-        if (b == 2) { if (++i > 5) i = 0; continue; }
+        if (b >= SWATCH_CODE && b < SWATCH_CODE + AMIGA_SWATCH_N) {
+            sw = (s16)(b - SWATCH_CODE);
+            i = nearest_paint(amiga_swatch_rgb(sw));
+            continue;
+        }
+        if (b == 1) { sw = -1; if (--i < 0) i = 5; continue; }
+        if (b == 2) { sw = -1; if (++i > 5) i = 0; continue; }
         break;
     }
+    ui_click_hook = NULL;
+    amiga_swatch_hide();
     if (b == 3 && pay_or_msg(20, 25)) {                            /* Paint ain't free! */
         sound_vec(2, 1);                                           /* start the spray effect */
         DSW(DS_g_mirror) = 1;
@@ -48,6 +90,7 @@ void paint_job(void)
         screen_put_bitmap_mirror(bg, x, y);
         arena_pop(1);
         DSB((u16)(gs_cur_car() + CR_COLOUR)) = (u8)i;
+        if (amiga_active()) amiga_paint_set(gs_cur_car(), i, sw >= 0 ? amiga_swatch_rgb(sw) : 0);   /* ENHANCED */
         set_paint_palette(DSC((u16)(gs_cur_car() + CR_COLOUR)));
         gs_clock_add(0x888);
         sound_vec(2, 0);

@@ -162,12 +162,19 @@ static u32 hsv_to_rgb(float h, float s, float v)
     return 0xFF000000u | (u32)(r * 255.0f + 0.5f) << 16 | (u32)(g * 255.0f + 0.5f) << 8 | (u32)(b * 255.0f + 0.5f);
 }
 
+static u32 paint_over[16];                   /* 0 = none, else 0xFF000000 | rgb */
+
+void sh_set_paint(int reg, u32 rgb)
+{
+    if (reg >= 0 && reg < 16) paint_over[reg] = rgb ? (0xFF000000u | rgb) : 0;
+}
+
 u32 sh_colour(u32 v, const u32 *pal)
 {
     if (!SH_IS_PAINT(v)) return v | 0xFF000000u;
     /* the paint over the Amiga shading: hue and saturation of the live paint register, the Amiga brightness */
     float ph, ps, pv, hh, ss, vv;
-    rgb_to_hsv(pal[v >> 24 & 15], &ph, &ps, &pv);
+    rgb_to_hsv(paint_over[v >> 24 & 15] ? paint_over[v >> 24 & 15] : pal[v >> 24 & 15], &ph, &ps, &pv);
     rgb_to_hsv(v, &hh, &ss, &vv);
     return hsv_to_rgb(ph, ps < 0.08f ? 0.0f : (ss < ps ? ss : ps), vv * (0.55f + 0.45f * pv));
 }
