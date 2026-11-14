@@ -129,7 +129,9 @@ void ega_copy_backdrops(int spage, int sx, int sy, int w, int h, int dpage, int 
 /* Is a region on screen? Per 16 x 16 tile of the region: a tile counts when at least 60 % of its picture pixels are
  * on screen unchanged, so a dialog over part of a backdrop only switches off the tiles under it. A tile of a single
  * colour (plain black sky) proves nothing on its own: it follows the region, which counts when at least a third of its
- * patterned tiles do (another screen with the same black area shows nothing of it). */
+ * patterned tiles do (another screen with the same black area shows nothing of it). The pixels under a full-colour
+ * car do not count for the other regions: the car covers them, they have not left the screen (a tile wholly under the
+ * car follows its region; each pixel is still drawn only where the screen shows the picture). */
 #define TS 16
 static void apply_backdrops(u32 *xrgb)
 {
@@ -149,15 +151,26 @@ static void apply_backdrops(u32 *xrgb)
         }
     }
     enum { TMAX = (320 / TS + 1) * (256 / TS + 1) };
-    static int seen[TMAX], same[TMAX];
+    static int seen[TMAX], same[TMAX], hid[TMAX];
+    static u8 under_car[320 * 200];
+    memset(under_car, 0, sizeof under_car);
+#define RY(yy) ((ppage[yy] == bd[r].page) ? prow[yy] - bd[r].y : -1)
+    for (int r = 0; r < bd_n; r++)
+        if (bd[r].car)
+            for (int y = 0; y < 200; y++) {
+                int ry = RY(y);
+                if (ry < 0 || ry >= bd[r].h) continue;
+                for (int x = 0; x < bd[r].w; x++)
+                    if (bd[r].x + x >= 0 && bd[r].x + x < 320) under_car[y * 320 + bd[r].x + x] = 1;
+            }
     static u16 cmask[TMAX];
     static bool pass[TMAX];
-#define RY(yy) ((ppage[yy] == bd[r].page) ? prow[yy] - bd[r].y : -1)
     for (int r = 0; r < bd_n; r++) {
         int W = bd[r].w, tw = (W + TS - 1) / TS, th = (bd[r].h + TS - 1) / TS, nt = tw * th;
         if (nt > TMAX) continue;
         memset(seen, 0, sizeof(int) * (size_t)nt);
         memset(same, 0, sizeof(int) * (size_t)nt);
+        memset(hid, 0, sizeof(int) * (size_t)nt);
         memset(cmask, 0, sizeof(u16) * (size_t)nt);
         for (int ry = 0; ry < bd[r].h; ry++)                    /* which colours each tile of the picture has */
             for (int x = 0; x < W; x++) {
@@ -171,6 +184,7 @@ static void apply_backdrops(u32 *xrgb)
                 u8 q = bd[r].ref[ry * W + x];
                 if (q >= 0xFE) continue;
                 int t = (ry / TS) * tw + x / TS;
+                if (!bd[r].car && under_car[y * 320 + bd[r].x + x]) { hid[t]++; continue; }
                 seen[t]++;
                 same[t] += idx[y * 320 + bd[r].x + x] == q;
             }
@@ -178,7 +192,7 @@ static void apply_backdrops(u32 *xrgb)
         int patterned = 0, patterned_ok = 0, any_seen = 0;
         for (int t = 0; t < nt; t++) {
             bool uniform = (cmask[t] & (cmask[t] - 1)) == 0;
-            pass[t] = seen[t] > 0 && same[t] * 10 >= seen[t] * 6;
+            pass[t] = seen[t] > 0 ? same[t] * 10 >= seen[t] * 6 : hid[t] > 0;
             any_seen += seen[t];
             if (!uniform && seen[t] > 0) { patterned++; patterned_ok += pass[t]; }
         }

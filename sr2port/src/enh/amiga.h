@@ -14,6 +14,8 @@ void amiga_on_blit(FarPtr src, FarPtr dst, const Rect *r, bool masked);
 /* car_compose: the body bitmap of model just made becomes the Amiga body with the customisation pieces of flags
  * (fitted, 16 colours; full colour on screen); true = done, the PC roof / bumper pieces are not wanted. */
 bool amiga_car_body(FarPtr frame, s16 model, s16 flags);
+/* car_compose, --amiga: the black around a PC tyre picture goes see-through. */
+void amiga_tyre_edge_clear(FarPtr pic);
 /* car_draw: a parked car (rows frow0.. of frame) put on page at x, y by a VRAM copy instead of a blit. */
 void amiga_car_shown(FarPtr frame, FarPtr page, int x, int y, int frow0, int rows);
 /* car_compose: frame = base moved shift pixels right (the driving animation frames 1..3). */

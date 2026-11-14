@@ -178,6 +178,7 @@ void car_compose(FarPtr *frames, s16 model, s16 flags, s16 driver, u16 tyre_pics
     if (tyre_pics != 0) {
         for (s16 i = 0; i < n; i++) {
             FarPtr w = pic_get(DSS((u16)(tyre_pics + 2 * i)), 2);
+            if (amiga) amiga_tyre_edge_clear(w);  /* ENHANCED: its black corners would show on the grey floor */
             s16 dy = (s16)(desc_h(frames[i]) - desc_h(w));
             s16 sh = (s16)(2 * i);
             bitmap_composite_behind(w, frames[i], (s16)(DSB(L) + sh), dy);

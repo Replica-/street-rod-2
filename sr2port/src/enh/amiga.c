@@ -297,6 +297,34 @@ bool amiga_car_body(FarPtr frame, s16 model, s16 flags)
     return true;
 }
 
+/* a PC tyre picture: its black (colour 0) reaching the picture's edge goes see-through (the corners around the round
+ * tyre, invisible on the PC's black floor, black blocks on the Amiga's grey one) */
+void amiga_tyre_edge_clear(FarPtr pic)
+{
+    if (!on || desc_type(pic) == DESC_TYPE_EGA || !bmp_ok(pic)) return;
+    FarPtr mk = desc_mask(pic);
+    if (!(mk.seg || mk.off)) return;
+    int w = desc_w(pic), h = desc_h(pic), n = 0;
+    int *stack = malloc(sizeof(int) * (size_t)w * h * 4 + sizeof(int));
+    uint8_t *seen = calloc((size_t)w * h, 1);
+    if (!stack || !seen) { free(stack); free(seen); return; }
+    for (int x = 0; x < w; x++) { stack[n++] = x; stack[n++] = (h - 1) * w + x; }
+    for (int y = 0; y < h; y++) { stack[n++] = y * w; stack[n++] = y * w + w - 1; }
+    u32 mb = lin(mk.seg, mk.off), st = desc_stride(pic);
+    while (n) {
+        int k = stack[--n], x = k % w, y = k / w;
+        if (seen[k] || bmp_px(pic, x, y) != 0) continue;
+        seen[k] = 1;
+        mem[mb + (u32)y * st + (u32)(x >> 3)] |= (u8)(0x80 >> (x & 7));
+        if (x > 0) stack[n++] = k - 1;
+        if (x + 1 < w) stack[n++] = k + 1;
+        if (y > 0) stack[n++] = k - w;
+        if (y + 1 < h) stack[n++] = k + w;
+    }
+    free(stack);
+    free(seen);
+}
+
 void amiga_car_shifted(FarPtr frame, FarPtr base, int shift)
 {
     static int next;

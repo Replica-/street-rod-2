@@ -5,8 +5,9 @@ gfx/amiga, next to the executable in a package; game data, never committed):
 
   pic_<id>.bmp      the Amiga picture that replaces PC picture <id> (sr2port/src/enh/amiga_map.h), full colour with
                     its palette table, same size as the PC picture
-  car_<m>.bmp       the Amiga body of car model m (0..21), alpha 0 = background, 254 = paint (recoloured to the car's
-                    paint at run time, keeping its brightness), 255 = other
+  car_<m>.bmp       the Amiga body of car model m (0..21), alpha 0 = see-through (Amiga colour 0, as the Amiga draws
+                    its cars: the background and the windows), 254 = paint (recoloured to the car's paint at run
+                    time, keeping its brightness), 255 = other
   car_<m>_<piece>.bmp  the customisation pieces (roof = chopped roof, rbump / fbump = stripped bumpers), same coding
   cars.txt          per model: the size of the body and where each piece goes on it ("<m> <piece> <x> <y>")
 
@@ -67,26 +68,8 @@ def place(B, aw, ah, P, pw, ph):
     return best[1], best[2]
 
 
-def background(I, w, h):
-    """colour 0 reached from the edge (black inside a car stays)"""
-    clear = bytearray(w * h)
-    stack = [x for x in range(w)] + [(h - 1) * w + x for x in range(w)] + [y * w for y in range(h)] + [y * w + w - 1 for y in range(h)]
-    while stack:
-        i = stack.pop()
-        if clear[i] or I[i] != 0:
-            continue
-        clear[i] = 1
-        x, y = i % w, i // w
-        if x > 0: stack.append(i - 1)
-        if x + 1 < w: stack.append(i + 1)
-        if y > 0: stack.append(i - w)
-        if y + 1 < h: stack.append(i + w)
-    return clear
-
-
-def car_argb(I, w, h, pal, clear=None):
-    if clear is None:
-        clear = background(I, w, h)
+def car_argb(I, w, h, pal):
+    clear = bytearray(1 if c == 0 else 0 for c in I)       # colour 0 is see-through (windows too), as on the Amiga
     out = []
     for i, c in enumerate(I):
         if clear[i]:
@@ -118,8 +101,7 @@ def main():
             for k, role in enumerate(roles):
                 pw, ph, P = decode(libs[0], body + 1 + k)
                 x, y = place(B, aw, ah, P, pw, ph)
-                clear = bytearray(1 if c == 0 else 0 for c in P)       # a piece overwrites its whole rectangle
-                write_bmp(os.path.join(out, 'car_%d_%s.bmp' % (m, role)), pw, ph, car_argb(P, pw, ph, pal, clear))
+                write_bmp(os.path.join(out, 'car_%d_%s.bmp' % (m, role)), pw, ph, car_argb(P, pw, ph, pal))
                 lines.append('%d %s %d %d' % (m, role, x, y))
         n += 1
     with open(os.path.join(out, 'cars.txt'), 'w', newline='\n') as f:
