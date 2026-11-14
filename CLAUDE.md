@@ -27,7 +27,7 @@ Token budget rules:
   `FORMATS.md` or `port/spec/`.
 - Ground truth when a spec is unclear: `python tools/x86dis.py work/SR2_unp.exe dis SSSS:OOOO LEN`.
 - Windows PowerShell 5.1 corrupts UTF-8 files: edit with the Edit/Write tools or Python only.
-- Faithful only: no enhancements here (resolution, widescreen, new options). Ideas go as a row into
-  PLAN.md "Enhanced backlog"; they are done later in the separate Enhanced repo.
+- Game logic stays faithful. Enhancements (3D race view `src/r3d/`, effects) live in this repo, never a separate
+  one, each behind a switch with the original as fallback (`--classic`). New ideas: a row in PLAN.md "Enhanced backlog".
 - Game data is never committed (`Game/` is git-ignored).
 - No test HTML pages; implement, then tell the user what to test.

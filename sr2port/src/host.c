@@ -7,13 +7,12 @@
 #include <string.h>
 
 #include "opl3.h"
+#include "r3d/r3d.h"
 
 #define AUDIO_RATE 49716          /* PORT: the OPL2 sample rate (14.318 MHz / 288), so Nuked-OPL3 runs unresampled */
 #define SPEAKER_AMPLITUDE 5000
 
 static SDL_Window *window;
-static SDL_Renderer *renderer;
-static SDL_Texture *texture;
 static SDL_AudioStream *audio;
 static SDL_Gamepad *gamepad;
 static char *game_dir;
@@ -57,12 +56,16 @@ bool host_init(const char *dir, int window_scale, bool fullscreen)
     }
     game_dir = SDL_strdup(dir);
     if (window_scale < 1) window_scale = 3;
-    if (!SDL_CreateWindowAndRenderer("Street Rod 2", 320 * window_scale, 240 * window_scale,
-                                     SDL_WINDOW_RESIZABLE, &window, &renderer)) {
-        fprintf(stderr, "window/renderer failed: %s\n", SDL_GetError());
+    /* ENHANCED: SR_HIDDEN=1 (developer aid) = an invisible window with OpenGL, for headless 3D snapshot runs */
+    SDL_WindowFlags hidden = SDL_getenv("SR_HIDDEN") ? SDL_WINDOW_HIDDEN : 0;
+    window = SDL_CreateWindow("Street Rod 2", 320 * window_scale, 240 * window_scale,
+                              SDL_WINDOW_RESIZABLE | r3d_window_flags() | hidden);
+    if (!window) window = SDL_CreateWindow("Street Rod 2", 320 * window_scale, 240 * window_scale, SDL_WINDOW_RESIZABLE);
+    if (!window) {
+        fprintf(stderr, "window failed: %s\n", SDL_GetError());
         return false;
     }
-    SDL_SetRenderVSync(renderer, 1);
+    r3d_init(window);                               /* ENHANCED: OpenGL presenter (no context: picture not shown) */
     if (fullscreen) SDL_SetWindowFullscreen(window, true);
     host_set_frame_source(NULL, 320, 200);
 
@@ -87,8 +90,7 @@ void host_shutdown(void)
     if (gamepad) SDL_CloseGamepad(gamepad);
     audio_dump_close();
     if (audio) SDL_DestroyAudioStream(audio);
-    if (texture) SDL_DestroyTexture(texture);
-    if (renderer) SDL_DestroyRenderer(renderer);
+    r3d_shutdown();
     if (window) SDL_DestroyWindow(window);
     SDL_free(game_dir);
     SDL_Quit();
@@ -103,11 +105,7 @@ void host_set_frame_source(bool (*compose)(u32 *), int w, int h)
     frame_source = compose;
     frame_w = SDL_clamp(w, 1, HOST_FRAME_MAX_W);
     frame_h = SDL_clamp(h, 1, HOST_FRAME_MAX_H);
-    /* The 200-line picture fills a 4:3 area, as it did on a VGA monitor. */
-    SDL_SetRenderLogicalPresentation(renderer, VIEW_W(frame_w), VIEW_H(frame_w), SDL_LOGICAL_PRESENTATION_LETTERBOX);
-    if (texture) SDL_DestroyTexture(texture);
-    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, frame_w, frame_h);
-    SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+    /* The 200-line picture fills a 4:3 area, as it did on a VGA monitor (r3d_present letterboxes it). */
 }
 
 static Uint64 tick_due_ns(Uint64 n)
@@ -389,24 +387,19 @@ static void snapshot(void)
     Uint64 now = SDL_GetTicksNS();
     if (n && now - last_ns < interval_ns) return;
     last_ns = now;
-    SDL_Surface *s = SDL_CreateSurfaceFrom(frame_w, frame_h, SDL_PIXELFORMAT_XRGB8888, frame, frame_w * 4);
-    if (!s) return;
     char path[512];
     SDL_snprintf(path, sizeof path, "%s/snap%04d.bmp", dir, n++);
+    if (r3d_save_bmp(path)) return;                 /* ENHANCED: the presented picture, 3D view included */
+    SDL_Surface *s = SDL_CreateSurfaceFrom(frame_w, frame_h, SDL_PIXELFORMAT_XRGB8888, frame, frame_w * 4);
+    if (!s) return;
     SDL_SaveBMP(s, path);
     SDL_DestroySurface(s);
 }
 
 static void present(void)
 {
+    r3d_present(frame, frame_w, frame_h);
     snapshot();
-    if (!texture) return;
-    SDL_UpdateTexture(texture, NULL, frame, frame_w * 4);
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-    SDL_RenderClear(renderer);
-    SDL_FRect dst = { 0, 0, (float)VIEW_W(frame_w), (float)VIEW_H(frame_w) };
-    SDL_RenderTexture(renderer, texture, NULL, &dst);
-    SDL_RenderPresent(renderer);
 }
 
 static Uint64 last_present_ns;
@@ -543,9 +536,11 @@ void host_pump(void)
         clock_start_ns = now - (tick_due_ns(ticks_run) - clock_start_ns);
     }
 
-    /* Present at most once per ~8 ms; VSync paces it further. */
+    /* Present at most once per ~8 ms; VSync paces it further. ENHANCED: every time while the 3D race view is live
+     * (it moves between the game's frames). */
     if (frame_source && now - last_present_ns >= 8 * SDL_NS_PER_MS) {
-        if (frame_source(frame)) {
+        bool changed = frame_source(frame);
+        if (changed || r3d_view_live()) {
             present();
             last_present_ns = SDL_GetTicksNS();
             worked = true;
@@ -715,9 +710,17 @@ static void process_events(void)
                     mickey_y += ev.motion.yrel * 2.0f * (float)frame_h / vh;
                 }
             }
-            SDL_ConvertEventToRenderCoordinates(renderer, &ev);
-            mouse_x = ev.motion.x;
-            mouse_y = ev.motion.y;
+            {
+                /* window coordinates -> logical picture units (VIEW_W x VIEW_H), same letterbox as r3d_present */
+                int ww = 0, wh = 0;
+                float lx, ly, lw, lh;
+                SDL_GetWindowSize(window, &ww, &wh);
+                r3d_letterbox((float)ww, (float)wh, &lx, &ly, &lw, &lh);
+                if (lw >= 1 && lh >= 1) {
+                    mouse_x = (ev.motion.x - lx) * (float)VIEW_W(frame_w) / lw;
+                    mouse_y = (ev.motion.y - ly) * (float)VIEW_H(frame_w) / lh;
+                }
+            }
             break;
         case SDL_EVENT_GAMEPAD_ADDED:
             if (!gamepad) gamepad = SDL_OpenGamepad(ev.gdevice.which);

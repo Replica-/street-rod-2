@@ -4,6 +4,9 @@
  *   --game-dir    folder with the original game files (default: "Game" in the working directory)
  *   --scale       initial window scale: 320x240 times N (default 3)
  *   --fullscreen  start in full screen (Alt+Enter switches)
+ *   --classic     ENHANCED: the original 2D race view instead of the 3D one
+ *   --rain        ENHANCED: rain in the 3D race view
+ *   --dusk, --night  ENHANCED: time of day in the 3D race view (night: headlights)
  *   --check       load and verify the original executable, print a summary and exit (no window)
  *   --run-ms N    developer aid: exit after N ms (headless snapshot runs)
  *   adlib | speaker  PORT (launcher): choose the sound card and skip the sound options menu
@@ -17,13 +20,14 @@
 #include <string.h>
 
 #include "game/game.h"
+#include "r3d/r3d.h"
 #include "host.h"
 #include "mem.h"
 #include "platform/ega.h"
 
 static int usage(const char *prog)
 {
-    fprintf(stderr, "usage: %s [--game-dir DIR] [--scale N] [--fullscreen] [--check] [--run-ms N] "
+    fprintf(stderr, "usage: %s [--game-dir DIR] [--scale N] [--fullscreen] [--classic] [--rain] [--dusk|--night] [--check] [--run-ms N] "
                     "[1] [nomouse] [demo] [nouemem] [e|c|v|h|t]\n", prog);
     return 2;
 }
@@ -53,6 +57,10 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--scale") && v) { scale = atoi(v); i++; }
         else if (!strcmp(a, "--run-ms") && v) { game_run_ms = atoi(v); i++; }
         else if (!strcmp(a, "--fullscreen")) fullscreen = true;
+        else if (!strcmp(a, "--classic")) r3d_set_classic(true);      /* ENHANCED */
+        else if (!strcmp(a, "--rain")) r3d_set_rain(true);            /* ENHANCED */
+        else if (!strcmp(a, "--dusk")) r3d_set_time_of_day(1);        /* ENHANCED */
+        else if (!strcmp(a, "--night")) r3d_set_time_of_day(2);       /* ENHANCED */
         else if (!strcmp(a, "--check")) check = true;
         else if (a[0] == '-' && a[1] == '-') return usage(argv[0]);
         else if (game_argc < 63) game_argv[game_argc++] = argv[i];   /* a switch of SR.EXE */
