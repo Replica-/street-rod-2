@@ -4,8 +4,8 @@
  * One entry per pixel of the 64 KB plane address space (byte offset * 8 + pixel, 0 = leftmost). An entry says what the
  * pixel looks like: SH_GAME = the game's own colour (the palette register of its plane index), or a full colour. The
  * game's drawing goes through vga.c, which reports each write here:
- *   - latch copies (write mode 1) and CPU copies (a byte just read from another offset written unchanged) carry the
- *     entries of the source pixels along (page flips, mirror copies, saved backgrounds, the pointer's save-under);
+ *   - latch copies (write mode 1) and CPU copies (vmovedata) carry the entries of the source pixels along (page flips,
+ *     mirror copies, saved backgrounds, the pointer's save-under);
  *   - fills, lines and text (set/reset, write mode 2) make the pixels SH_GAME;
  *   - other data writes make the pixels they change SH_GAME (a sprite's see-through pixels stay as they are);
  *   - while a drawing source is set (sh_begin, around a blit of a picture with a full-colour version, a car ...), the
@@ -33,7 +33,8 @@ u32 *sh_pixels(void);                                  /* EGA_PLANE_SIZE * 8 ent
 void sh_clear(void);
 
 void sh_latch(u16 off);                                /* vga_rd: the latches were loaded from off */
-void sh_write(u16 off, u8 before, u8 after, u8 mask, int kind, bool copy);   /* vga_wr, per plane */
+void sh_write(u16 off, u8 before, u8 after, u8 mask, int kind);   /* vga_wr, per plane */
+void sh_copy(u16 soff, u16 doff);                      /* vmovedata: a CPU copy from one plane offset to another */
 
 /* a drawing source for the area of `h` rows of `stride` bytes from plane offset `base` (w pixels wide) */
 void sh_begin(u32 base, u32 stride, int w, int h, ShSource fn, void *user);

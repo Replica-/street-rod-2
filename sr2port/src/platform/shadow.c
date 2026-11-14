@@ -47,19 +47,24 @@ static u32 ctx_value(u16 off, int k)
     return ctx.fn(ctx.user, x, (int)row);
 }
 
-void sh_write(u16 off, u8 before, u8 after, u8 mask, int kind, bool copy)
+void sh_write(u16 off, u8 before, u8 after, u8 mask, int kind)
 {
     if (!on) return;
     u32 *p = px + (u32)off * 8;
     for (int k = 0; k < 8; k++) {
         u8 bit = (u8)(0x80 >> k);
         if (!(mask & bit)) continue;
-        if (kind == SH_W_LATCH || copy) { p[k] = latch[k]; continue; }
+        if (kind == SH_W_LATCH) { p[k] = latch[k]; continue; }
         u32 v = ctx_value(off, k);
         if (v == SH_KEEP) continue;
         if (v != SH_NONE) { p[k] = v; continue; }
         if (kind == SH_W_FILL || ((before ^ after) & bit)) p[k] = SH_GAME;
     }
+}
+
+void sh_copy(u16 soff, u16 doff)
+{
+    if (on && soff != doff) memmove(px + (u32)doff * 8, px + (u32)soff * 8, 8 * sizeof(u32));
 }
 
 void sh_begin(u32 base, u32 stride, int w, int h, ShSource fn, void *user)

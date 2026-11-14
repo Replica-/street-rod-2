@@ -119,16 +119,14 @@ void vga_wait_blank_then_retrace(void)
     host_wait_vretrace();
 }
 
-/* ENHANCED (--amiga, platform/shadow.h): the offset the latches were last loaded from, true until the next write */
+/* ENHANCED (--amiga, platform/shadow.h): the offset the latches were last loaded from */
 static u16 read_off;
-static bool read_fresh;
 
 u8 vga_rd(u16 off)
 {
     for (int k = 0; k < 4; k++) vga.latch[k] = ega_plane(k)[off];
     sh_latch(off);
     read_off = off;
-    read_fresh = true;
     if (vga.mode & 0x08) {                               /* read mode 1: colour compare */
         u8 differ = 0;
         for (int k = 0; k < 4; k++) {
@@ -143,12 +141,6 @@ u8 vga_rd(u16 off)
 
 void vga_wr(u16 off, u8 v)
 {
-    /* a byte just read from another offset written back unchanged to one plane: a CPU copy */
-    bool copy = read_fresh && read_off != off && (vga.mode & 3) == 0 && (vga.func & 0x18) == 0 &&
-                vga.bit_mask == 0xFF && (vga.map_mask == 1 || vga.map_mask == 2 || vga.map_mask == 4 ||
-                                         vga.map_mask == 8) && !(vga.enable_sr & vga.map_mask) &&
-                v == vga.latch[vga.read_map & 3];
-    read_fresh = false;
     for (int k = 0; k < 4; k++) {
         if (!(vga.map_mask >> k & 1)) continue;
         u8 *p = &ega_plane(k)[off];
@@ -157,7 +149,7 @@ void vga_wr(u16 off, u8 v)
         switch (vga.mode & 3) {
         case 1:                                          /* latches, no function / bit mask */
             *p = vga.latch[k];
-            sh_write(off, before, *p, 0xFF, SH_W_LATCH, false);
+            sh_write(off, before, *p, 0xFF, SH_W_LATCH);
             continue;
         case 2:
             x = (v >> k & 1) ? 0xFF : 0x00;
@@ -183,17 +175,19 @@ void vga_wr(u16 off, u8 v)
         if ((vga.mode & 3) == 3) m &= v;
         *p = (u8)((x & m) | (l & (u8)~m));
         /* ENHANCED: the bits the bit mask keeps come from the latches (the same pixels when read from here) */
-        if (read_off != off && (u8)~m) sh_write(off, before, *p, (u8)~m, SH_W_LATCH, false);
-        sh_write(off, before, *p, m, kind, copy);
+        if (read_off != off && (u8)~m) sh_write(off, before, *p, (u8)~m, SH_W_LATCH);
+        sh_write(off, before, *p, m, kind);
     }
     ega_touch();
 }
 
 void vmovedata(u16 sseg, u16 soff, u16 dseg, u16 doff, u16 n)
 {
+    bool both = is_vram(sseg) && is_vram(dseg);
     while (n--) {
         u8 b = vrd(sseg, soff);
         vwr(dseg, doff, b);
+        if (both) sh_copy(vram_off(sseg, soff), vram_off(dseg, doff));   /* ENHANCED: the full colours go along */
         soff++;
         doff++;
     }

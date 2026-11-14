@@ -30,6 +30,8 @@ CAR_AFTER = CAR_BODY[1:] + [264]
 # the pieces each PC model has (SR2_DATA overlays block: roof, rear bumper, front bumper; -1 = none)
 PC_HAS = {10: ('rbump', 'fbump'), 12: ('roof', 'rbump'), 14: ('roof', 'rbump'), 21: ()}
 CAR_PAL = 7
+# the Amiga wheel sheets (4 turning frames side by side) for the PC tyre types DS:4D30 (1050-1053, 1014-1017, 1084-1087)
+WHEELS = [137, 135, 136]
 PAINT = set(range(1, 10)) | set(range(33, 42))     # table 7: the red ramp 810..F98 and its half-bright copies
 # PC pictures that are part of a full Amiga screen: the PC id -> (x, y, w, h) cut from the Amiga picture
 CROP = {3: (40, 40, 256, 97)}                       # the California Dreams logo, drawn at (40, 40) on the PC
@@ -95,6 +97,32 @@ def car_argb(I, w, h, pal):
     return out
 
 
+def arches(B, w, h):
+    """The two wheel arches of a body (colour 0 = see-through): the column runs where the body's lowest opaque row is
+    well above its sill; (centre x, apex y) of the two widest, left to right."""
+    low = []
+    for x in range(w):
+        ys = [y for y in range(h) if B[y * w + x]]
+        low.append(max(ys) if ys else -1)
+    body = sorted(v for v in low if v >= 0)
+    sill = body[len(body) * 3 // 4]
+    runs, x = [], 0
+    while x < w:
+        if 0 <= low[x] < sill - 5:
+            x0 = x
+            while x < w and 0 <= low[x] < sill - 5:
+                x += 1
+            if x0 > 0 and x < w:                       # not the overhangs at the ends
+                runs.append((x - x0, x0, x))
+        else:
+            x += 1
+    runs = sorted(sorted(runs, reverse=True)[:2], key=lambda r: r[1])
+    found = [((a + b) // 2, min(low[a:b])) for _, a, b in runs]
+    if len(found) != 2 or found[0][0] < w * 0.08 or found[1][0] > w * 0.92 or found[1][0] - found[0][0] < w * 0.4:
+        return []                                       # not two clear arches: the game places the wheels itself
+    return found
+
+
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, 'gfx')
     os.makedirs(out, exist_ok=True)
@@ -134,8 +162,19 @@ def main():
                 write_bmp(os.path.join(out, 'car_%d_%s.bmp' % (m, role)), pw, ph, car_argb(P, pw, ph, pal))
                 lines.append('%d %s %d %d' % (m, role, x, y))
         n += 1
+    for m, body in enumerate(CAR_BODY):                # the wheel arches: where the wheels go
+        aw, ah, B = decode(libs[0], body)
+        for k, (cx, ay) in enumerate(arches(B, aw, ah)):
+            lines.append('%d wheel%d %d %d' % (m, k, cx, ay))
+    for t, sheet in enumerate(WHEELS):                  # the wheels: 4 turning frames per type
+        sw, sh, S = decode(libs[0], sheet)
+        cw = sw // 4
+        for f in range(4):
+            W = [S[y * sw + f * cw + x] for y in range(sh) for x in range(cw)]
+            write_bmp(os.path.join(out, 'wheel_%d_%d.bmp' % (t, f)), cw, sh, car_argb(W, cw, sh, pal))
     with open(os.path.join(out, 'cars.txt'), 'w', newline='\n') as f:
-        f.write('# model piece x y (where the piece goes on car_<model>.bmp)\n' + '\n'.join(lines) + '\n')
+        f.write('# model piece x y (where the piece goes on car_<model>.bmp; wheel0 / wheel1: centre x, arch top y)\n' +
+                '\n'.join(lines) + '\n')
     print('%d pictures and cars -> %s' % (n, out))
 
 

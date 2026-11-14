@@ -153,7 +153,7 @@ void car_compose(FarPtr *frames, s16 model, s16 flags, s16 driver, u16 tyre_pics
     u16 P = (u16)(DS_MODEL_OVERLAYS + 10 * model);
     u16 L = (u16)(DS_MODEL_LAYOUT + 12 * model);
     frames[0] = pic_get(model_pic(model), 1);
-    bool amiga = amiga_car_body(frames[0], model, flags);   /* ENHANCED: --amiga car, with its own pieces */
+    bool amiga = amiga_car_begin(frames[0], model, flags);  /* ENHANCED: --amiga, the whole Amiga car (below) */
     DSW(DS_gascap_x) = DSB((u16)(L + 10));
     DSW(DS_gascap_y) = DSB((u16)(L + 11));
     if ((flags & 2) && !amiga) pic_blit_at(frames[0], DSS((u16)(P + 6)), 0, DSB((u16)(L + 7)));
@@ -167,9 +167,9 @@ void car_compose(FarPtr *frames, s16 model, s16 flags, s16 driver, u16 tyre_pics
         }
         roof = roof_first_row();
     }
-    if ((flags & 8) && model != 0x15)
+    if ((flags & 8) && model != 0x15 && !amiga)
         pic_draw_masked(frames[0], DSS((u16)(P + 4)), DSB((u16)(L + 5)), DSB((u16)(L + 6)), 1);
-    if (driver != 0) {
+    if (driver != 0 && !amiga) {
         FarPtr d = pic_get(DSS(DS_garage_car_driver), 2);
         bitmap_composite_behind(d, frames[0], DSB((u16)(L + 2)),
                                 (s16)(DSB((u16)(L + 3)) - desc_h(d) + roof + 1));
@@ -177,24 +177,18 @@ void car_compose(FarPtr *frames, s16 model, s16 flags, s16 driver, u16 tyre_pics
     }
     for (s16 i = 1; i < n; i++)
         frames[i] = arena_bitmap_alloc((s16)(desc_w(frames[0]) + 8), (s16)desc_h(frames[0]), 1, 1);
-    for (s16 i = 1; i < n; i++) {                 /* VGA: each frame 2 px right of the previous */
+    for (s16 i = 1; i < n; i++)                   /* VGA: each frame 2 px right of the previous */
         bitmap_make_shifted(frames[i - 1], 2, frames[i]);
-        amiga_car_shifted(frames[i], frames[0], 2 * i);          /* ENHANCED */
-    }
-    if (tyre_pics != 0) {
+    if (amiga) {                                  /* ENHANCED: every frame the Amiga car with its turning wheels */
+        s16 t = tyre_pics >= DS_TYRE_PICS && tyre_pics < DS_TYRE_PICS + 24 ? (s16)((tyre_pics - DS_TYRE_PICS) / 8) : -1;
+        amiga_car_frames(frames, n, t, DSB(L), DSB((u16)(L + 1)));
+    } else if (tyre_pics != 0) {
         for (s16 i = 0; i < n; i++) {
             FarPtr w = pic_get(DSS((u16)(tyre_pics + 2 * i)), 2);
-            if (amiga) amiga_tyre_edge_clear(w);  /* ENHANCED: its black corners would show on the grey floor */
             s16 dy = (s16)(desc_h(frames[i]) - desc_h(w));
             s16 sh = (s16)(2 * i);
             bitmap_composite_behind(w, frames[i], (s16)(DSB(L) + sh), dy);
             bitmap_composite_behind(w, frames[i], (s16)(DSB((u16)(L + 1)) + sh), dy);
-            if (amiga) {                          /* ENHANCED: in front too, the arches do not match the PC tyres */
-                Rect r = { (s16)desc_w(w), (s16)desc_h(w), 0, 0, (s16)(DSB(L) + sh), dy };
-                bitmap_blit_masked_shift(w, frames[i], &r, 1);
-                r.dx = (s16)(DSB((u16)(L + 1)) + sh);
-                bitmap_blit_masked_shift(w, frames[i], &r, 1);
-            }
             arena_pop(1);
         }
     }

@@ -19,10 +19,9 @@ void amiga_sprite_end(void);
 /* around ega_vram_cache_strips' blit of frame rows frow0.. into the VRAM strip at tp (stride bytes a row) */
 void amiga_cache_begin(FarPtr frame, FarPtr tp, u16 stride, s16 rows, s16 frow0);
 void amiga_cache_end(void);
-/* car_compose: the body bitmap of model just made becomes the full-colour body with the customisation pieces of
- * flags (fitted into the PC frame, its 16-colour shape too); true = done, the PC roof / bumper pieces are not wanted. */
-bool amiga_car_body(FarPtr frame, s16 model, s16 flags);
-/* car_compose, --amiga: the black around a PC tyre picture goes see-through. */
-void amiga_tyre_edge_clear(FarPtr pic);
-/* car_compose: frame = base moved shift pixels right (the driving animation frames 1..3). */
-void amiga_car_shifted(FarPtr frame, FarPtr base, int shift);
+/* car_compose: the body bitmap of model just made (frame 0) is to become the whole Amiga car; true = it will, the PC
+ * pieces, driver and tyres are not wanted. Then amiga_car_frames fills the n frames (frame f = the car 2 * f pixels
+ * right, wheels of tyre type tyre 0..2 in turning frame f, -1 = none; pc_x0 / pc_x1 = the PC tyres' x, for bodies
+ * whose arches are not known) in the game's 16 colours (shape, mask) and in full colour. */
+bool amiga_car_begin(FarPtr frame, s16 model, s16 flags);
+void amiga_car_frames(FarPtr *frames, s16 n, s16 tyre, s16 pc_x0, s16 pc_x1);
