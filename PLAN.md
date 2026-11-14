@@ -1,12 +1,12 @@
 # Street Rod 2 Enhanced — plan
 
 ## Status
-Set up 2026-11-14 from the faithful port (`../street-rod-2` at 75326ff). Phase R1 (3D race view) done 2026-11-14. Next: **R2.3** (dusk / night).
+Set up 2026-11-14 from the faithful port (`../street-rod-2` at 75326ff). Phase R1 (3D race view) done 2026-11-14. Phases R1 (3D race view) and R2 (effects) done 2026-11-14. Next: user checks (User to-do), then polish / the Later list.
 
 ## User to-do
 | What | Why |
 |---|---|
-| Try `--rain`: rain, drops on the windscreen, overcast | R2.1 |
+| Try `--rain`, `--dusk`, `--night` (and `--rain --night`): rain, windscreen drops, spray, headlights | R2.1 - R2.3 |
 | Drive a cruise and a Mulholland race in the 3D view: smooth? road where you expect it, curves and hills feel right? (`--classic` = old view) | R1.2 / R1.3 |
 | Play a little in the new OpenGL window: title, garage, a race; resize the window, Alt+Enter, mouse clicks land where the pointer is | R1.1 replaced SDL's renderer; it should look and click exactly as before |
 
@@ -31,7 +31,7 @@ renderer instead of the original road routines; the dashboard, cockpit overlay a
 |---|---|---|---|
 | R2.1 | Rain: particles, streaks on the windscreen, wet road (darker, reflections) | M | done 2026-11-14 (no reflections yet) |
 | R2.2 | Spray and tyre smoke behind cars | S | done 2026-11-14 |
-| R2.3 | Fog / dusk / night lighting with headlights | M | |
+| R2.3 | Fog / dusk / night lighting with headlights | M | done 2026-11-14 |
 
 ## Later (from the faithful repo's Enhanced backlog)
 | Id | Idea | Size |
@@ -54,5 +54,6 @@ Notes:
 - R1.8: page masks now also need the page's view area unchanged since the mask was made (checksum in ega.c), so a crash picture or the next screen drawn on that page shows whole. Bob's Drive-In run checked headless (town cruise 3D, the bungalow screen whole, the race 3D). `SR_SMOKE_3D=1 python tools/sr2_smoke.py` runs the smoke tests with the hidden OpenGL window: all 8 race tests ok with the 3D path, same timings as 2D; full suite (2D path) 15/15 ok.
 - R2.1: `--rain` (`r3d/rain.c`): 2500 world streaks in a 10000-unit box around the eye (fall 2500 units/s, slanted by the car's smoothed velocity), windscreen drops in screen space (drawn after the 3D scene, under the 2D cockpit), overcast sky, fog from 2500 over 30000, colours x0.72. Mirror gets the streaks, not the drops. Not done: road reflections.
 - R2.2: puffs (`rain.c`): soft camera-facing discs that grow, drift and fade; spray from a moving opponent's rear corners in the rain (60/s), smoke from our rear wheels while DS:72E0 (squeal) is set (30/s, seen mostly in the mirror); time-based emission.
+- R2.3: `--dusk` (orange sky, ambient 0.62) and `--night` (dark sky and fog, ambient 0.12, headlight cone ahead: half-width 0.42 x distance + 500, fading to 14000) in both shaders, `fwd` = the car's heading (also in the mirror pass); rain and smoke dimmed with `r3d_fx_set_light`. Combine with `--rain`.
 - Why 3D straight away: the 2D renderer only gets ~6 position updates a second (physics every 12th tick, frames every
   8 ticks), so smoothness needs interpolation either way; doing it in 3D also makes rain and effects possible.

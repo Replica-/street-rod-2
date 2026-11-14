@@ -41,7 +41,7 @@ typedef void (APIENTRYP PFNGLREADPIXELSPROC)(GLint x, GLint y, GLsizei w, GLsize
     X(CREATEPROGRAM, CreateProgram) X(ATTACHSHADER, AttachShader) X(LINKPROGRAM, LinkProgram) \
     X(GETPROGRAMIV, GetProgramiv) X(GETPROGRAMINFOLOG, GetProgramInfoLog) X(USEPROGRAM, UseProgram) \
     X(DELETEPROGRAM, DeleteProgram) X(GETUNIFORMLOCATION, GetUniformLocation) X(UNIFORM1I, Uniform1i) \
-    X(UNIFORM1F, Uniform1f) X(UNIFORM3F, Uniform3f) X(UNIFORMMATRIX4FV, UniformMatrix4fv) \
+    X(UNIFORM1F, Uniform1f) X(UNIFORM3F, Uniform3f) X(UNIFORM4F, Uniform4f) X(UNIFORMMATRIX4FV, UniformMatrix4fv) \
     X(GENVERTEXARRAYS, GenVertexArrays) X(DELETEVERTEXARRAYS, DeleteVertexArrays) \
     X(BINDVERTEXARRAY, BindVertexArray) X(GENBUFFERS, GenBuffers) X(DELETEBUFFERS, DeleteBuffers) \
     X(BINDBUFFER, BindBuffer) X(BUFFERDATA, BufferData) X(VERTEXATTRIBPOINTER, VertexAttribPointer) \

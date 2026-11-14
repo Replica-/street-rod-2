@@ -69,8 +69,13 @@ void r3d_rain_shutdown(void)
     vbo = vao = prog = 0;
 }
 
+/* R2.3: how much light rain and smoke get (1 day, less at dusk / night) */
+static float fx_light = 1.0f;
+void r3d_fx_set_light(float k) { fx_light = k; }
+
 static void draw(const float *mvp, GLenum kind, int n)
 {
+    for (int i = 0; i < n; i++) { fv[i].r *= fx_light; fv[i].g *= fx_light; fv[i].b *= fx_light; }
     gl.UseProgram(prog);
     gl.UniformMatrix4fv(loc_mvp, 1, GL_FALSE, mvp);
     gl.BindVertexArray(vao);

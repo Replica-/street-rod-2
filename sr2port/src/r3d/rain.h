@@ -14,5 +14,6 @@ void r3d_rain_draw_screen(float aspect);             /* windscreen drops in the 
 void r3d_puff_emit(const float *pos, const float *vel, float size, float grey, float alpha);
 void r3d_puffs_update(void);                          /* once per displayed frame */
 void r3d_puffs_draw(const float *mvp, float cam_yaw);
+void r3d_fx_set_light(float k);                      /* R2.3: light on rain and smoke */
 
 #endif

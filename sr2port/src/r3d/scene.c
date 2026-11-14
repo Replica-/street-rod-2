@@ -29,7 +29,13 @@
 typedef struct { float x, y, z, r, g, b; } Vert;
 
 static GLuint prog, vao, vbo;
-static GLint loc_mvp, loc_eye, loc_fog, loc_fogr;
+static GLint loc_mvp, loc_eye, loc_fog, loc_fogr, loc_lite, loc_fwd;
+
+/* R2.3 time of day: 0 day, 1 dusk, 2 night (headlights); light = ambient, headlight strength; fwd = view dir */
+static int tod;
+static float lite[4] = { 1, 0, 0, 0 }, fwd[3] = { 0, 1, 0 };
+
+void r3d_set_time_of_day(int t) { tod = t; }
 
 /* R2.1 weather: fog start, fog span, colour factor (wet / dim) */
 static bool rain;
@@ -52,11 +58,20 @@ static const char *fs =
     "uniform vec3 eye;\n"
     "uniform vec3 fog;\n"
     "uniform vec3 fogr;\n"
+    "uniform vec4 lite;\n"
+    "uniform vec3 fwd;\n"
+    "float light(vec3 p) {\n"
+    "    vec2 r = p.xz - eye.xz;\n"
+    "    float a = dot(r, fwd.xy), s = abs(dot(r, vec2(fwd.y, -fwd.x)));\n"
+    "    float cone = clamp(1.0 - s / (0.42 * a + 500.0), 0.0, 1.0) * step(0.0, a);\n"
+    "    float fall = clamp(1.0 - a / 14000.0, 0.0, 1.0);\n"
+    "    return lite.x + lite.y * cone * fall * fall;\n"
+    "}\n"
     "out vec4 colour;\n"
     "void main() {\n"
     "    float d = length(w.xz - eye.xz);\n"
     "    float f = clamp((d - fogr.x) / fogr.y, 0.0, 1.0);\n"
-    "    colour = vec4(mix(c * fogr.z, fog, f), 1.0);\n"
+    "    colour = vec4(mix(c * fogr.z * light(w), fog, f), 1.0);\n"
     "}\n";
 
 /* ---------------------------------------------------------------- track */
@@ -129,7 +144,7 @@ static void edges(int i, float *xl, float *xr)
 typedef struct { float x, y, z, u, v; } SVert;
 
 static GLuint sprog, svao, svbo, stex[R3D_SPRITE_SLOTS];
-static GLint sloc_mvp, sloc_eye, sloc_fog, sloc_fogr, sloc_tex;
+static GLint sloc_mvp, sloc_eye, sloc_fog, sloc_fogr, sloc_tex, sloc_lite, sloc_fwd;
 static uint32_t shash[R3D_SPRITE_SLOTS];
 
 static const char *svs =
@@ -148,13 +163,22 @@ static const char *sfs =
     "uniform vec3 eye;\n"
     "uniform vec3 fog;\n"
     "uniform vec3 fogr;\n"
+    "uniform vec4 lite;\n"
+    "uniform vec3 fwd;\n"
+    "float light(vec3 p) {\n"
+    "    vec2 r = p.xz - eye.xz;\n"
+    "    float a = dot(r, fwd.xy), s = abs(dot(r, vec2(fwd.y, -fwd.x)));\n"
+    "    float cone = clamp(1.0 - s / (0.42 * a + 500.0), 0.0, 1.0) * step(0.0, a);\n"
+    "    float fall = clamp(1.0 - a / 14000.0, 0.0, 1.0);\n"
+    "    return lite.x + lite.y * cone * fall * fall;\n"
+    "}\n"
     "out vec4 colour;\n"
     "void main() {\n"
     "    vec4 c = texture(tex, t);\n"
     "    if (c.a < 0.5) discard;\n"
     "    float d = length(w.xz - eye.xz);\n"
     "    float f = clamp((d - fogr.x) / fogr.y, 0.0, 1.0);\n"
-    "    colour = vec4(mix(c.rgb * fogr.z, fog, f), 1.0);\n"
+    "    colour = vec4(mix(c.rgb * fogr.z * light(w), fog, f), 1.0);\n"
     "}\n";
 
 void r3d_sprite_upload(int slot, const uint32_t *bgra, int w, int h)
@@ -178,6 +202,8 @@ static bool sprites_init(void)
     sloc_fog = gl.GetUniformLocation(sprog, "fog");
     sloc_tex = gl.GetUniformLocation(sprog, "tex");
     sloc_fogr = gl.GetUniformLocation(sprog, "fogr");
+    sloc_lite = gl.GetUniformLocation(sprog, "lite");
+    sloc_fwd = gl.GetUniformLocation(sprog, "fwd");
     gl.GenTextures(R3D_SPRITE_SLOTS, stex);
     for (int i = 0; i < R3D_SPRITE_SLOTS; i++) {
         gl.BindTexture(GL_TEXTURE_2D, stex[i]);
@@ -234,6 +260,8 @@ static void sprite_draw(const R3dSprite *s, float cam_yaw, const float *mvp, con
     gl.Uniform3f(sloc_eye, eye[0], eye[1], eye[2]);
     gl.Uniform3f(sloc_fog, fog[0], fog[1], fog[2]);
     gl.Uniform3f(sloc_fogr, fog_range[0], fog_range[1], fog_range[2]);
+    gl.Uniform4f(sloc_lite, lite[0], lite[1], lite[2], lite[3]);
+    gl.Uniform3f(sloc_fwd, fwd[0], fwd[1], fwd[2]);
     gl.Uniform1i(sloc_tex, 0);
     gl.ActiveTexture(GL_TEXTURE0);
     gl.BindTexture(GL_TEXTURE_2D, stex[s->slot]);
@@ -291,6 +319,8 @@ static void scenery_draw(int first, int last, float cam_yaw, const float *mvp, c
     gl.Uniform3f(sloc_eye, eye[0], eye[1], eye[2]);
     gl.Uniform3f(sloc_fog, fog[0], fog[1], fog[2]);
     gl.Uniform3f(sloc_fogr, fog_range[0], fog_range[1], fog_range[2]);
+    gl.Uniform4f(sloc_lite, lite[0], lite[1], lite[2], lite[3]);
+    gl.Uniform3f(sloc_fwd, fwd[0], fwd[1], fwd[2]);
     gl.Uniform1i(sloc_tex, 0);
     gl.ActiveTexture(GL_TEXTURE0);
     gl.BindVertexArray(svao);
@@ -334,6 +364,8 @@ bool r3d_scene_init(void)
     loc_eye = gl.GetUniformLocation(prog, "eye");
     loc_fog = gl.GetUniformLocation(prog, "fog");
     loc_fogr = gl.GetUniformLocation(prog, "fogr");
+    loc_lite = gl.GetUniformLocation(prog, "lite");
+    loc_fwd = gl.GetUniformLocation(prog, "fwd");
     gl.GenVertexArrays(1, &vao);
     gl.GenBuffers(1, &vbo);
     gl.BindVertexArray(vao);
@@ -528,6 +560,15 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
         haze[0] = 0.46f; haze[1] = 0.50f; haze[2] = 0.55f;
         fog_range[0] = 2500.0f; fog_range[1] = 30000.0f; fog_range[2] = 0.72f;
     } else { fog_range[0] = 20000.0f; fog_range[1] = 50000.0f; fog_range[2] = 1.0f; }
+    lite[0] = 1; lite[1] = 0;
+    if (tod == 1) {                                        /* R2.3 dusk: warm low light */
+        sky[0] = 0.78f; sky[1] = 0.45f; sky[2] = 0.32f; haze[0] = 0.62f; haze[1] = 0.42f; haze[2] = 0.38f;
+        lite[0] = 0.62f;
+    } else if (tod == 2) {                                 /* R2.3 night: headlights */
+        sky[0] = 0.02f; sky[1] = 0.03f; sky[2] = 0.08f; haze[0] = 0.03f; haze[1] = 0.04f; haze[2] = 0.08f;
+        lite[0] = 0.12f; lite[1] = 1.15f;
+        fog_range[0] = 6000.0f; fog_range[1] = 20000.0f;
+    }
     gl.ClearColor(sky[0], sky[1], sky[2], 1);
     gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     if (!have_trk) return;
@@ -547,6 +588,8 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
     float above = (0x7D0 - v->cam_y) + (v->height - trk.hgt[si]) * HGT_UNIT;
     track_point(v->pos, v->cam_x, above, &ex, &ey, &ez);
     float yaw = v->heading * YAW_RAD;
+    fwd[0] = sinf(yaw); fwd[1] = cosf(yaw);                /* R2.3: the headlights point where the car points */
+    r3d_fx_set_light(tod == 2 ? 0.3f : tod == 1 ? 0.75f : 1.0f);
     float proj[16], view[16], mvp[16];
     if (mirror) {
         /* R1.5: the original's mirror projects with a quarter of the front focal length (road_proj_x_mirror: no x4),
@@ -570,6 +613,8 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
     gl.Uniform3f(loc_eye, ex, ey, ez);
     gl.Uniform3f(loc_fog, haze[0], haze[1], haze[2]);
     gl.Uniform3f(loc_fogr, fog_range[0], fog_range[1], fog_range[2]);
+    gl.Uniform4f(loc_lite, lite[0], lite[1], lite[2], lite[3]);
+    gl.Uniform3f(loc_fwd, fwd[0], fwd[1], fwd[2]);
     gl.BindVertexArray(vao);
     gl.BindBuffer(GL_ARRAY_BUFFER, vbo);
     gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(nv * sizeof(Vert)), verts, GL_STREAM_DRAW);

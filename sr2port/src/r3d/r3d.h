@@ -22,6 +22,8 @@ bool r3d_classic(void);
 
 /* --rain (R2.1): rain in the 3D race view (falling streaks, drops on the windscreen, grey sky, wet road). */
 void r3d_set_rain(bool on);
+/* --dusk / --night (R2.3): 0 day, 1 dusk, 2 night with headlights. */
+void r3d_set_time_of_day(int t);
 
 /* The letterboxed picture rectangle inside a w x h area (4:3). */
 void r3d_letterbox(float w, float h, float *x, float *y, float *rw, float *rh);
