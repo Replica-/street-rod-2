@@ -53,9 +53,9 @@ void r3d_sprite_upload(int slot, const uint32_t *bgra, int w, int h);
 /* Scenery (R1.4): SR2_SHP shape types 0..22, each uploaded as a picture of its largest LOD with the pixel position
  * of the shape origin (ox, oy) and the world units per pixel; objects stand on the track (origin at the road
  * surface height, lateral x), mirrored when side <= 0. */
-#define R3D_SHAPES 23
+#define R3D_SHAPES 28        /* 0..22 SR2_SHP sets, 23..27 sign pictures (never mirrored) */
 void r3d_shape_upload(int type, const uint32_t *bgra, int w, int h, int ox, int oy, float scale);
-typedef struct { int16_t seg, x; uint8_t type; int8_t side; } R3dObject;
+typedef struct { int16_t seg, x, lift; uint8_t type; int8_t side; } R3dObject;   /* lift = origin height */
 void r3d_objects_set(const R3dObject *objs, int n);
 
 /* The original's sky / horizon panorama (road_draw_sky 3e66, 3cca), BGRA, w = 320 pixels per 320 / FOCAL radians

@@ -7,7 +7,9 @@
  * there (ega_set_page_mask). The start-light slide's state is put back between the two passes. */
 #include "game/race3d.h"
 
+#include <SDL3/SDL.h>
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "game/race_int.h"
@@ -238,6 +240,47 @@ static void upload_shape(int type, const u32 *rgb)
         }
     }
     r3d_shape_upload(type, pic_px, w, h, -best.x0, -best.y0, world_h / (float)h);
+    if (SDL_getenv("SR_R3D_TRACE") && mem[0] != 0xFF) {             /* developer aid: once per shape and mode */
+        static int seen[R3D_SHAPES][0x20];
+        if (!seen[type][MODE & 0x1F]++) fprintf(stderr, "r3d shape %d: %dx%d lods %d scale %.1f\n", type, w, h, n, (double)(world_h / (float)h));
+    }
+}
+
+/* Sign pictures (scenery_draw_sign_picture 52e2): kind 1 = the location-sign sheet in page 0 rows 100.. , kind 2 / 3 =
+ * the two town billboards (DS:96AE); size 6 (the nearest) = sub-rectangle DS:7F02[6] {srcx, w, h}, used at depth row
+ * 3 (z ~ 28: 7 world units per pixel). Uploaded as shapes 23.. with the origin where the original anchors them. */
+#define SIGN_BILL2 23
+#define SIGN_BILL3 24
+#define SIGN_LOC 25                 /* centred (banner) */
+#define SIGN_RIGHT 26               /* right edge at x (left corner sign, align 1) */
+#define SIGN_LEFT 27                /* left edge at x (right corner sign) */
+
+static void upload_signs(const u32 *rgb)
+{
+    u16 e = (u16)(DS_sign_sizes + 6 * 6);
+    int sx = DSS(e), w = DSS((u16)(e + 2)), h = DSS((u16)(e + 4));
+    if (w <= 0 || h <= 0 || w > 320 || h > 100) return;
+    static u32 crop[320 * 100];
+    for (int k = 0; k < 2; k++) {                                  /* billboards */
+        int pw, ph;
+        if (!decode_pic(ds_far((u16)(DS_billboard_pics + 4 * k)), &pw, &ph)) continue;
+        if (sx + w > pw || h > ph) continue;
+        for (int y = 0; y < h; y++) memcpy(crop + y * w, pic_px + y * pw + sx, (size_t)w * sizeof(u32));
+        r3d_shape_upload(SIGN_BILL2 + k, crop, w, h, w / 2, h / 2, 7.0f);
+    }
+    FarPtr pg = desc_planes(ds_far(DS_page0_ptr));                  /* location signs: VGA page 0, rows 100.. */
+    u32 base = (u32)(pg.seg - 0xA000) * 16u + pg.off;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            u32 o = (base + (u32)(100 + y) * EGA_BYTES_PER_LINE + (u32)((sx + x) >> 3)) & 0xFFFF;
+            u8 bit = (u8)(0x80 >> ((sx + x) & 7));
+            int c = 0;
+            for (int pl = 0; pl < 4; pl++) if (ega_plane(pl)[o] & bit) c |= 1 << pl;
+            crop[y * w + x] = rgb[c];
+        }
+    r3d_shape_upload(SIGN_LOC, crop, w, h, w / 2, h / 2, 7.0f);
+    r3d_shape_upload(SIGN_RIGHT, crop, w, h, w, h / 2, 7.0f);
+    r3d_shape_upload(SIGN_LEFT, crop, w, h, 0, h / 2, 7.0f);
 }
 
 static void road_edges(u16 c, int *xl, int *xr)
@@ -259,8 +302,9 @@ static int build_objects(void)
     int n = 0, mode = MODE, w = mode == 0x10 ? 200 : 400;
     int xol = 0x5DC - w, xor_ = 0xCE4 + w, xfl = -(w - 0x177) * 4, xfr = (w + 0x339) * 4;
     int t4 = mode == 0x10 ? 0x15 : 4, u = mode == 0x10 ? 0x16 : 0xB;
-#define ADD(xx, t, sd) do { if (n < MAX_OBJECTS) { objs[n].seg = (int16_t)i; objs[n].x = (int16_t)(xx); \
-        objs[n].type = (uint8_t)(t); objs[n].side = (int8_t)(sd); n++; } } while (0)
+#define ADDL(xx, t, sd, lf) do { if (n < MAX_OBJECTS) { objs[n].seg = (int16_t)i; objs[n].x = (int16_t)(xx); \
+        objs[n].lift = (int16_t)(lf); objs[n].type = (uint8_t)(t); objs[n].side = (int8_t)(sd); n++; } } while (0)
+#define ADD(xx, t, sd) ADDL(xx, t, sd, 0)
     for (int i = 0; i < R3D_TRACK_N; i++) {
         u16 L = flag_l(i), R = flag_r(i), C = flag_c(i);
         bool cross = C & 1, flat_l = bank_l(i) == 0, flat_r = bank_r(i) == 0;
@@ -273,6 +317,7 @@ static int build_objects(void)
         }
         if (!(mode & 7) && (L & 0x800)) ADD(xl, 3, 1);
         if (!(mode & 7) && (L & 0x1000)) ADD(xl, 6, 1);
+        if (!(mode & 6) && (L & 1) && cross) ADDL(xl, SIGN_RIGHT, 1, 50);
         if (!(mode & 6) && (L & 1) && !cross && flat_l) ADD(xl, 1, 1);
         if (mode == 0x10 && (L & 0x10)) ADD(xl - 150, 8, 1);
         if ((mode & 7) || flat_l) {
@@ -300,7 +345,16 @@ static int build_objects(void)
         if (R & 0x4000) ADD(xr, 0x13, 1);
         if (R & 0x800) ADD(xr, 3, 1);
         if (R & 0x1000) ADD(xr, 6, -1);
+        if (!(mode & 6) && (R & 1) && cross) ADDL(xr, SIGN_LEFT, 1, 50);
         if (!(mode & 6) && (R & 1) && !cross && flat_r) ADD(xr, 1, -1);
+        if ((C & 0xF000) && !(mode & 0x16)) {                  /* gantry sign (banner 55ce), at the bar 400 up */
+            int mid = (xl + xr) >> 1;
+            if (C & 0x1000) ADDL(mid, 0x0D, 1, 400);
+            else if (!(C & 0x2000)) {
+                if (!cross) ADDL(mid, (C & 0x4000) ? 0x0C : 0x0E, 1, 400);
+                else ADDL(mid, (C & 0x4000) ? SIGN_BILL2 : SIGN_BILL3, 1, 400);
+            } else ADDL(mid, SIGN_LOC, 1, 400);
+        }
         if (mode == 0x10 && (R & 0x10)) ADD(xr + 150, 8, -1);
         if (mode == 0x10 && (C & 4)) {
             s16 x6 = TRKS(TRK_LANE, geo(i));
@@ -323,11 +377,20 @@ static void push_scenery(void)
         u8 v = ega_get_palette_reg(i);
         rgb[i] = ega_palette[(v & 7) | (v >> 1 & 8)] | 0xFF000000u;
     }
-    for (int t = 0; t < R3D_SHAPES; t++) upload_shape(t, rgb);   /* cheap; hashed by r3d */
+    for (int t = 0; t < 23; t++) upload_shape(t, rgb);          /* cheap; hashed by r3d */
+    if (!(MODE & 0x16)) upload_signs(rgb);
     if (sum == last_sum && MODE == last_mode) return;
     last_sum = sum;
     last_mode = MODE;
-    r3d_objects_set(objs, build_objects());
+    int nobj = build_objects();
+    r3d_objects_set(objs, nobj);
+    if (SDL_getenv("SR_R3D_TRACE")) {                              /* developer aid */
+        int cnt[R3D_SHAPES] = { 0 };
+        for (int i = 0; i < nobj; i++) cnt[objs[i].type]++;
+        fprintf(stderr, "r3d objects mode %d:", MODE);
+        for (int t = 0; t < R3D_SHAPES; t++) if (cnt[t]) fprintf(stderr, " %d:%d", t, cnt[t]);
+        fprintf(stderr, "\n");
+    }
 }
 
 /* The drag strip's start lights (road_draw_start_tree aab0): the panel picture DS:9A40 with its lamps composed in,

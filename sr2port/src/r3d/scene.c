@@ -311,7 +311,9 @@ void r3d_objects_set(const R3dObject *objs, int n)
 }
 
 /* the objects of segments first..last-1 as camera-facing pictures, one draw per shape type */
-static void scenery_draw(int first, int last, float cam_yaw, const float *mvp, const float *eye, const float *fog)
+/* gantry signs (lift 400) follow their gantry, which is drawn as far as the road: up to far_last */
+static void scenery_draw(int first, int last, int far_last, float cam_yaw, const float *mvp, const float *eye,
+                         const float *fog)
 {
     float rx = cosf(cam_yaw), rz = -sinf(cam_yaw);
     gl.UseProgram(sprog);
@@ -331,10 +333,10 @@ static void scenery_draw(int first, int last, float cam_yaw, const float *mvp, c
         float sc = shp[t].sc, w = (float)shp[t].w, h = (float)shp[t].h, ox = (float)shp[t].ox, oy = (float)shp[t].oy;
         for (int i = 0; i < nobjects && n + 6 <= MAX_SVERTS; i++) {
             const R3dObject *o = &objects[i];
-            if (o->type != t || o->seg < first || o->seg >= last) continue;
+            if (o->type != t || o->seg < first || o->seg >= (o->lift >= 400 ? far_last : last)) continue;
             float bx, by, bz;
-            track_point((float)o->seg, (float)o->x, 0, &bx, &by, &bz);
-            bool mir = o->side <= 0;
+            track_point((float)o->seg, (float)o->x, (float)o->lift, &bx, &by, &bz);
+            bool mir = o->side <= 0 && t < 23;
             float l = (mir ? -(w - ox) : -ox) * sc, r = (mir ? ox : w - ox) * sc;
             float u0 = mir ? 1.0f : 0.0f, u1 = 1.0f - u0;
             float top = by + oy * sc, bot = by + (oy - h) * sc;
@@ -469,9 +471,25 @@ static void build(int first, int last, int mode)
         if (xr > xl) band(p0, p1, xl, xr, 0, 0, 0, 0, PC(road));
         float sl = 0x5DC - w, sr = 0xCE4 + w;
         bool cross = c & 1;
-        if (cross) {                                           /* intersection pavements */
-            band(p0, p1, sl, xl, 0.5f, 0.5f, 0.5f, 0.5f, PC(4));
-            band(p0, p1, xr, sr, 0.5f, 0.5f, 0.5f, 0.5f, PC(4));
+        if (cross) {                                           /* intersection pavements (4322 cross path) */
+            if (trk.l[i] & 0x80) {
+                float m = sl + (xl - sl) * 0.5f;
+                band(p0, p1, sl, m, 0.5f, 0.5f, 0.5f, 0.5f, PC(4));
+                band(p0, p1, m, xl, 0.5f, 0.5f, 0.5f, 0.5f, PC(9));
+            } else band(p0, p1, sl, xl, 0.5f, 0.5f, 0.5f, 0.5f, PC(4));
+            if (trk.r[i] & 0x80) {
+                float m = sr - (sr - xr) * 0.5f;
+                band(p0, p1, m, sr, 0.5f, 0.5f, 0.5f, 0.5f, PC(4));
+                band(p0, p1, xr, m, 0.5f, 0.5f, 0.5f, 0.5f, PC(9));
+            } else band(p0, p1, xr, sr, 0.5f, 0.5f, 0.5f, 0.5f, PC(4));
+            band(p0, p0 + 0.08f, sl, xl, 1, 1, 1, 1, PC(2));    /* kerb lines */
+            band(p0, p0 + 0.08f, xr, sr, 1, 1, 1, 1, PC(2));
+        }
+        if ((c & 0xF000) && !(mode & 0x16)) {                 /* gantry (banner 55ce): posts and bar in 10, 400 up */
+            float pw = 60, bt = 400, bb = 340;                  /* camera-facing posts and bar */
+            band(p0, p0, xl - pw, xl, 0, 0, bt, bt, PC(10));
+            band(p0, p0, xr, xr + pw, 0, 0, bt, bt, PC(10));
+            band(p0, p0, xl - pw, xr + pw, bb, bb, bt, bt, PC(10));
         } else if (mul && !(c & 0x80)) {                       /* kerbs / rails */
             band(p0, p1, sl, xl, 0, 0, 0, 0, PC(2));
             band(p0, p1, xr, sr, 0, 0, 0, 0, PC(2));
@@ -724,7 +742,8 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
     gl.BindVertexArray(0);
 
     const float eye[3] = { ex, ey, ez };
-    scenery_draw(first, last, yaw, mvp, eye, haze);
+    if (mirror) scenery_draw(seg - 8 < 0 ? 0 : seg - 8, seg + 1, last, yaw, mvp, eye, haze);
+    else scenery_draw(first, seg + 12 < last ? seg + 12 : last, last, yaw, mvp, eye, haze);
     sprite_draw(&v->opp, yaw, mvp, eye, haze);
     sprite_draw(&v->tree, yaw, mvp, eye, haze);
     if (!mirror) emit_puffs(v);
