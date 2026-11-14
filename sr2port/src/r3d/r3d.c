@@ -227,6 +227,12 @@ static R3dView view_now(void)
     v.height = blend(a->height, b->height, t, 400.0f);
     v.opp_pos = (a->opp_pos < 0 || b->opp_pos < 0) ? b->opp_pos : blend(a->opp_pos, b->opp_pos, t, 8.0f);
     v.opp_lat = blend(a->opp_lat, b->opp_lat, t, 1500.0f);
+    if (a->opp.vis && b->opp.vis && a->opp.along == b->opp.along) {
+        v.opp.pos = blend(a->opp.pos, b->opp.pos, t, 8.0f);
+        v.opp.lat = blend(a->opp.lat, b->opp.lat, t, 1500.0f);
+        v.opp.w = blend(a->opp.w, b->opp.w, t, 1e9f);
+        v.opp.h = blend(a->opp.h, b->opp.h, t, 1e9f);
+    }
     return v;
 }
 

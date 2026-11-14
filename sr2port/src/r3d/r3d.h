@@ -30,6 +30,21 @@ bool r3d_save_bmp(const char *path);
 
 /* The race view state at one original frame (road_frame), in game units. r3d keeps the last two and draws the
  * blend for the display time, one original frame behind. */
+/* A sprite standing in the 3D world (R1.4): a picture uploaded with r3d_sprite_upload. */
+typedef struct {
+    bool vis;
+    int slot;           /* texture slot (r3d_sprite_upload) */
+    float pos;          /* track position in segments */
+    float lat;          /* lateral position (game units) */
+    float w, h;         /* world size (game units) */
+    float lift;         /* base height above the road */
+    bool along;         /* true: lies along the road (a side view), false: faces the camera */
+} R3dSprite;
+
+#define R3D_SPRITE_SLOTS 8
+/* BGRA pixels (alpha 0 = transparent); re-uploaded only when they change. */
+void r3d_sprite_upload(int slot, const uint32_t *bgra, int w, int h);
+
 typedef struct {
     float pos;          /* track position in segments: seg + substep / 64 */
     float cam_x;        /* lateral camera position (0xA00 = start lane) */
@@ -39,6 +54,7 @@ typedef struct {
     float opp_pos;      /* opponent position in segments, < 0 = none */
     float opp_lat;      /* opponent lateral position */
     int mode;           /* road mode DS:ADD6 */
+    R3dSprite opp;      /* the opponent's car (R1.4) */
 } R3dView;
 
 void r3d_view_push(const R3dView *v);

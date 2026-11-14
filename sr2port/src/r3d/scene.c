@@ -115,12 +115,129 @@ static void edges(int i, float *xl, float *xr)
     else { *xl = *xr = 0x5DC; }
 }
 
+/* ---------------------------------------------------------------- sprites (R1.4) */
+
+typedef struct { float x, y, z, u, v; } SVert;
+
+static GLuint sprog, svao, svbo, stex[R3D_SPRITE_SLOTS];
+static GLint sloc_mvp, sloc_eye, sloc_fog, sloc_tex;
+static uint32_t shash[R3D_SPRITE_SLOTS];
+
+static const char *svs =
+    "#version 330 core\n"
+    "layout(location = 0) in vec3 pos;\n"
+    "layout(location = 1) in vec2 uv;\n"
+    "uniform mat4 mvp;\n"
+    "out vec2 t;\n"
+    "out vec3 w;\n"
+    "void main() { t = uv; w = pos; gl_Position = mvp * vec4(pos, 1.0); }\n";
+static const char *sfs =
+    "#version 330 core\n"
+    "in vec2 t;\n"
+    "in vec3 w;\n"
+    "uniform sampler2D tex;\n"
+    "uniform vec3 eye;\n"
+    "uniform vec3 fog;\n"
+    "out vec4 colour;\n"
+    "void main() {\n"
+    "    vec4 c = texture(tex, t);\n"
+    "    if (c.a < 0.5) discard;\n"
+    "    float d = length(w.xz - eye.xz);\n"
+    "    float f = clamp((d - 20000.0) / 50000.0, 0.0, 1.0);\n"
+    "    colour = vec4(mix(c.rgb, fog, f), 1.0);\n"
+    "}\n";
+
+void r3d_sprite_upload(int slot, const uint32_t *bgra, int w, int h)
+{
+    if (slot < 0 || slot >= R3D_SPRITE_SLOTS || !stex[slot] || w <= 0 || h <= 0) return;
+    uint32_t hsh = 2166136261u ^ (uint32_t)(w * 7919 + h);
+    for (int i = 0; i < w * h; i++) hsh = (hsh ^ bgra[i]) * 16777619u;
+    if (hsh == shash[slot]) return;
+    shash[slot] = hsh;
+    gl.BindTexture(GL_TEXTURE_2D, stex[slot]);
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, bgra);
+}
+
+static bool sprites_init(void)
+{
+    sprog = r3d_program(svs, sfs);
+    if (!sprog) return false;
+    sloc_mvp = gl.GetUniformLocation(sprog, "mvp");
+    sloc_eye = gl.GetUniformLocation(sprog, "eye");
+    sloc_fog = gl.GetUniformLocation(sprog, "fog");
+    sloc_tex = gl.GetUniformLocation(sprog, "tex");
+    gl.GenTextures(R3D_SPRITE_SLOTS, stex);
+    for (int i = 0; i < R3D_SPRITE_SLOTS; i++) {
+        gl.BindTexture(GL_TEXTURE_2D, stex[i]);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+    gl.GenVertexArrays(1, &svao);
+    gl.GenBuffers(1, &svbo);
+    gl.BindVertexArray(svao);
+    gl.BindBuffer(GL_ARRAY_BUFFER, svbo);
+    gl.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(SVert), (void *)0);
+    gl.EnableVertexAttribArray(0);
+    gl.VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(SVert), (void *)offsetof(SVert, u));
+    gl.EnableVertexAttribArray(1);
+    gl.BindVertexArray(0);
+    return true;
+}
+
+static void sprites_shutdown(void)
+{
+    if (stex[0]) gl.DeleteTextures(R3D_SPRITE_SLOTS, stex);
+    if (svbo) gl.DeleteBuffers(1, &svbo);
+    if (svao) gl.DeleteVertexArrays(1, &svao);
+    if (sprog) gl.DeleteProgram(sprog);
+    memset(stex, 0, sizeof stex);
+    memset(shash, 0, sizeof shash);
+    svbo = svao = sprog = 0;
+}
+
+/* one sprite: base centre on the track at (pos, lat), facing the camera (yaw) or lying along the road */
+static void sprite_draw(const R3dSprite *s, float cam_yaw, const float *mvp, const float *eye, const float *fog)
+{
+    if (!s->vis || s->slot < 0 || s->slot >= R3D_SPRITE_SLOTS) return;
+    float bx, by, bz;
+    track_point(s->pos, s->lat, s->lift, &bx, &by, &bz);
+    float rx, rz;
+    if (s->along) {                                      /* the track's forward direction at pos */
+        float ax, ay, az;
+        track_point(s->pos + 0.1f, s->lat, s->lift, &ax, &ay, &az);
+        float l = sqrtf((ax - bx) * (ax - bx) + (az - bz) * (az - bz));
+        rx = l > 0 ? (ax - bx) / l : 0;
+        rz = l > 0 ? (az - bz) / l : 1;
+    } else { rx = cosf(cam_yaw); rz = -sinf(cam_yaw); }  /* the camera's right */
+    float hw = s->w * 0.5f;
+    SVert q[6] = {
+        { bx - rx * hw, by,        bz - rz * hw, 0, 1 }, { bx + rx * hw, by,        bz + rz * hw, 1, 1 },
+        { bx + rx * hw, by + s->h, bz + rz * hw, 1, 0 }, { bx - rx * hw, by,        bz - rz * hw, 0, 1 },
+        { bx + rx * hw, by + s->h, bz + rz * hw, 1, 0 }, { bx - rx * hw, by + s->h, bz - rz * hw, 0, 0 },
+    };
+    gl.UseProgram(sprog);
+    gl.UniformMatrix4fv(sloc_mvp, 1, GL_FALSE, mvp);
+    gl.Uniform3f(sloc_eye, eye[0], eye[1], eye[2]);
+    gl.Uniform3f(sloc_fog, fog[0], fog[1], fog[2]);
+    gl.Uniform1i(sloc_tex, 0);
+    gl.ActiveTexture(GL_TEXTURE0);
+    gl.BindTexture(GL_TEXTURE_2D, stex[s->slot]);
+    gl.BindVertexArray(svao);
+    gl.BindBuffer(GL_ARRAY_BUFFER, svbo);
+    gl.BufferData(GL_ARRAY_BUFFER, sizeof q, q, GL_STREAM_DRAW);
+    gl.DrawArrays(GL_TRIANGLES, 0, 6);
+    gl.BindVertexArray(0);
+}
+
 /* ---------------------------------------------------------------- GL */
 
 bool r3d_scene_init(void)
 {
     prog = r3d_program(vs, fs);
-    if (!prog) return false;
+    if (!prog || !sprites_init()) return false;
     loc_mvp = gl.GetUniformLocation(prog, "mvp");
     loc_eye = gl.GetUniformLocation(prog, "eye");
     loc_fog = gl.GetUniformLocation(prog, "fog");
@@ -138,6 +255,7 @@ bool r3d_scene_init(void)
 
 void r3d_scene_shutdown(void)
 {
+    sprites_shutdown();
     if (vbo) gl.DeleteBuffers(1, &vbo);
     if (vao) gl.DeleteVertexArrays(1, &vao);
     if (prog) gl.DeleteProgram(prog);
@@ -266,4 +384,7 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh)
     gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(nv * sizeof(Vert)), verts, GL_STREAM_DRAW);
     gl.DrawArrays(GL_TRIANGLES, 0, nv);
     gl.BindVertexArray(0);
+
+    const float eye[3] = { ex, ey, ez };
+    sprite_draw(&v->opp, v->heading * YAW_RAD, mvp, eye, haze);
 }

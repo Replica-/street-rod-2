@@ -70,6 +70,78 @@ static void build_mask(u8 *mask)
     }
 }
 
+/* ---------------------------------------------------------------- sprites (R1.4) */
+
+#define PIC_MAX (320 * 200)
+static u32 pic_px[PIC_MAX];
+
+/* A RAM bitmap descriptor (video.h: planes one after the other, stride bytes per row, mask 1 = transparent)
+ * as BGRA through the current palette registers. */
+static bool decode_pic(FarPtr d, int *pw, int *ph)
+{
+    if (!d.seg && !d.off) return false;
+    int w = desc_w(d), h = desc_h(d), st = desc_stride(d);
+    if (w <= 0 || h <= 0 || w * h > PIC_MAX || st <= 0 || desc_type(d) == DESC_TYPE_EGA) return false;
+    FarPtr pl = desc_planes(d), mk = desc_mask(d);
+    u32 base = lin(pl.seg, pl.off), mbase = lin(mk.seg, mk.off), plane = (u32)st * (u32)h;
+    bool has_mask = mk.seg || mk.off;
+    if (base + 4 * plane > MEM_SIZE || (has_mask && mbase + plane > MEM_SIZE)) return false;
+    u32 rgb[16];
+    for (int i = 0; i < 16; i++) {
+        u8 v = ega_get_palette_reg(i);
+        rgb[i] = ega_palette[(v & 7) | (v >> 1 & 8)] | 0xFF000000u;
+    }
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            u32 o = (u32)y * st + (u32)(x >> 3);
+            u8 bit = (u8)(0x80 >> (x & 7));
+            int c = 0;
+            for (int k = 0; k < 4; k++)
+                if (mem[base + k * plane + o] & bit) c |= 1 << k;
+            bool clear = has_mask ? (mem[mbase + o] & bit) != 0 : c == 0;
+            pic_px[y * w + x] = clear ? 0 : rgb[c];
+        }
+    *pw = w;
+    *ph = h;
+    return true;
+}
+
+static FarPtr opp_pic(int s) { return ds_far((u16)(DS_opp_sprites + 4 * s)); }
+
+/* The opponent (opponent_draw af98 has just run in the 2D frame and chosen view DS:A7D4 and picture DS:B198):
+ * the largest picture of the same kind (side 0, rear quarters 1 / 3, rear 2 for 2 and 4..8), sized in the world
+ * from the original's own size at its distance (screen px = 4 * world / z), smoothed. */
+static void opp_sprite(R3dSprite *o)
+{
+    static float ew[13], eh[13];
+    memset(o, 0, sizeof *o);
+    if (!DSB(DS_racing) || MODE == 2) return;
+    s16 s = DSS(DS_opp_sprite), d = DSS(DS_opp_last_d);
+    if (s < 0 || s > 8) return;                            /* behind (mirror only) or not chosen */
+    int kind = (s == 0 || s == 1 || s == 3) ? s : 2;
+    int w, h;
+    FarPtr cur = ds_far(DS_opp_pic);
+    if (desc_w(cur) > 0) {
+        int z = d / 8;
+        if (s == 0) z += 0x10;
+        if (z < -2 && s == 2) z += 8;
+        z = (z < 0 ? -z : z) + 4;
+        float sc = (float)z / 4.0f;                        /* world units per frame pixel at that depth */
+        float ww = desc_w(cur) * sc, hh = desc_h(cur) * sc;
+        if (ew[kind] <= 0) { ew[kind] = ww; eh[kind] = hh; }
+        else { ew[kind] += (ww - ew[kind]) * 0.3f; eh[kind] += (hh - eh[kind]) * 0.3f; }
+    }
+    if (ew[kind] <= 0 || !decode_pic(opp_pic(kind), &w, &h)) return;
+    r3d_sprite_upload(0, pic_px, w, h);
+    o->vis = true;
+    o->slot = 0;
+    o->pos = (float)DSS(DS_opp_seg) + (float)DSS(DS_opp_seg_frac64) / 64.0f;
+    o->lat = (float)DSS(DS_opp_lat);
+    o->h = eh[kind];
+    o->w = eh[kind] * (float)w / (float)h;                 /* the big picture's own aspect */
+    o->along = s == 0;
+}
+
 static void push_track(void)
 {
     static R3dTrack t;
@@ -97,6 +169,7 @@ static void push_view(void)
     v.opp_pos = (float)DSS(DS_opp_seg) + (float)(DSS(DS_opp_seg_frac64) & 0x3F) / 64.0f;
     v.opp_lat = (float)DSS(DS_opp_lat);
     v.mode = MODE;
+    opp_sprite(&v.opp);
     r3d_view_push(&v);
 }
 
