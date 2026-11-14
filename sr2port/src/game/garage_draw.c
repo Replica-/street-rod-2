@@ -182,6 +182,13 @@ void car_compose(FarPtr *frames, s16 model, s16 flags, s16 driver, u16 tyre_pics
     if (amiga) {                                  /* ENHANCED: every frame the Amiga car with its turning wheels */
         s16 t = tyre_pics >= DS_TYRE_PICS && tyre_pics < DS_TYRE_PICS + 24 ? (s16)((tyre_pics - DS_TYRE_PICS) / 8) : -1;
         amiga_car_frames(frames, n, t, DSB(L), DSB((u16)(L + 1)));
+        if (driver != 0) {                        /* the driver behind the Amiga body: seen through its windows */
+            FarPtr d = pic_get(DSS(DS_garage_car_driver), 2);
+            for (s16 i = 0; i < n; i++)
+                bitmap_composite_behind(d, frames[i], (s16)(DSB((u16)(L + 2)) + 2 * i),
+                                        (s16)(DSB((u16)(L + 3)) - desc_h(d) + roof + 1));
+            arena_pop(1);
+        }
     } else if (tyre_pics != 0) {
         for (s16 i = 0; i < n; i++) {
             FarPtr w = pic_get(DSS((u16)(tyre_pics + 2 * i)), 2);
