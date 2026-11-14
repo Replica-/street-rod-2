@@ -2,6 +2,30 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Run 3D (Enhanced)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../street-rod-2-enhanced/sr2port/build/sr2port.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/../street-rod-2-enhanced",
+            "environment": [{ "name": "PATH", "value": "C:\\msys64\\ucrt64\\bin;${env:PATH}" }],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe"
+        },
+        {
+            "name": "Run 3D (Enhanced, rain + night)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../street-rod-2-enhanced/sr2port/build/sr2port.exe",
+            "args": ["--rain", "--night"],
+            "cwd": "${workspaceFolder}/../street-rod-2-enhanced",
+            "environment": [{ "name": "PATH", "value": "C:\\msys64\\ucrt64\\bin;${env:PATH}" }],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe"
+        },
+        {
             "name": "Run",
             "type": "cppdbg",
             "request": "launch",
