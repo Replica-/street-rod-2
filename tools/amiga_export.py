@@ -29,6 +29,8 @@ CAR_AFTER = CAR_BODY[1:] + [264]
 PC_HAS = {10: ('rbump', 'fbump'), 12: ('roof', 'rbump'), 14: ('roof', 'rbump'), 21: ()}
 CAR_PAL = 7
 PAINT = set(range(1, 10)) | set(range(33, 42))     # table 7: the red ramp 810..F98 and its half-bright copies
+# PC pictures that are part of a full Amiga screen: the PC id -> (x, y, w, h) cut from the Amiga picture
+CROP = {3: (40, 40, 256, 97)}                       # the California Dreams logo, drawn at (40, 40) on the PC
 
 
 def write_bmp(path, w, h, argb):
@@ -87,6 +89,10 @@ def main():
     n = 0
     for pid, lib, idx, pal in re.findall(r'\{ (\d+), (\d), (\d+), (\d+) \}', open(MAP_H).read()):
         w, h, I = decode(libs[int(lib)], int(idx))
+        if int(pid) in CROP:
+            cx, cy, cw, ch = CROP[int(pid)]
+            I = [I[(cy + y) * w + cx + x] for y in range(ch) for x in range(cw)]
+            w, h = cw, ch
         p = amilib.exe_palette(int(pal), libs[int(lib)][int(idx)]['depth'])
         write_bmp(os.path.join(out, 'pic_%s.bmp' % pid), w, h, [0xFF000000 | rgb(p[c % len(p)]) for c in I])
         n += 1

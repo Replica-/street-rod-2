@@ -434,7 +434,6 @@ void amiga_on_sprite(FarPtr sprite, FarPtr page, const Rect *r)
 
 void amiga_on_blit(FarPtr src, FarPtr dst, const Rect *r, bool masked)
 {
-    (void)masked;
     if (!on || !r || desc_type(dst) != DESC_TYPE_EGA) return;
     int dpage = page_of(dst);
     if (desc_type(src) == DESC_TYPE_EGA) {                            /* page to page: the regions go along */
@@ -447,7 +446,10 @@ void amiga_on_blit(FarPtr src, FarPtr dst, const Rect *r, bool masked)
             if (track[i].seg == src.seg && track[i].off == src.off)
                 fprintf(stderr, "amiga: picture %d %dx%d -> page %d at %d,%d\n", track[i].id, r->w, r->h, dpage, r->dx, r->dy);
     int m = map_of(src);
-    if (m < 0) return;
+    if (m < 0) {                                                      /* a PC picture over whole regions: they go */
+        if (!masked) ega_cover_backdrops(dpage, r->dx, r->dy, r->w, r->h);
+        return;
+    }
     char name[32];
     SDL_snprintf(name, sizeof name, "pic_%d.bmp", amiga_map[m].pc_id);
     Img *im = &pic_img[m];

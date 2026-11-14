@@ -159,6 +159,10 @@ void car_compose(FarPtr *frames, s16 model, s16 flags, s16 driver, u16 tyre_pics
     s16 roof = 0;                                 /* [bp-8] */
     if (flags & 4) {
         if (!amiga) pic_blit_at(frames[0], DSS((u16)(P + 2)), DSB((u16)(L + 4)), 0);
+        else {                                    /* ENHANCED: the PC piece only for its first row (DS:pic_last) */
+            ds_far_wr(DS_pic_last, pic_get(DSS((u16)(P + 2)), 2));
+            arena_pop(1);
+        }
         roof = roof_first_row();
     }
     if ((flags & 8) && model != 0x15)

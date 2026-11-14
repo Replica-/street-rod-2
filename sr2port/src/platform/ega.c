@@ -51,10 +51,11 @@ void ega_set_page_mask(int page, const u8 *mask)
  * replacement where the screen still shows the reference pixel (and its 4 neighbours do too, so things drawn on top in
  * the picture's own colour stay the game's), only while most of the visible region matches. Newest last (on top). */
 #define BD_MAX 256
-static struct { u8 *ref; u32 *rgb; int page, x, y, w, h; bool strict, car; } bd[BD_MAX];   /* strict: 4-neighbour rule */
+static struct { u8 *ref; u32 *rgb; int page, x, y, w, h; bool strict, car; u8 *cov; int ncov; Uint64 cov_t; } bd[BD_MAX];
+                                    /* strict: 4-neighbour rule; cov: pixels drawn over in the current burst (cov_t) */
 static int bd_n;
 
-static void bd_free(int i) { free(bd[i].ref); free(bd[i].rgb); }
+static void bd_free(int i) { free(bd[i].ref); free(bd[i].rgb); free(bd[i].cov); }
 
 void ega_drop_backdrops(int page, int x, int y, int w, int h)
 {
@@ -69,13 +70,43 @@ void ega_drop_backdrops(int page, int x, int y, int w, int h)
     bd_n = k;
 }
 
+void ega_cover_backdrops(int page, int x, int y, int w, int h)
+{
+    ega_drop_backdrops(page, x, y, w, h);
+    int k = 0;
+    for (int i = 0; i < bd_n; i++) {
+        int x0 = bd[i].x > x ? bd[i].x : x, y0 = bd[i].y > y ? bd[i].y : y;
+        int x1 = bd[i].x + bd[i].w < x + w ? bd[i].x + bd[i].w : x + w;
+        int y1 = bd[i].y + bd[i].h < y + h ? bd[i].y + bd[i].h : y + h;
+        if (bd[i].page == page && !bd[i].car && x1 > x0 && y1 > y0) {
+            Uint64 now = SDL_GetTicks();
+            if (bd[i].cov && now - bd[i].cov_t > 500) {        /* a new burst of drawing: dialogs come one by one */
+                memset(bd[i].cov, 0, (size_t)bd[i].w * bd[i].h);
+                bd[i].ncov = 0;
+            }
+            bd[i].cov_t = now;
+            if (!bd[i].cov) bd[i].cov = calloc((size_t)bd[i].w * bd[i].h, 1);
+            if (bd[i].cov)
+                for (int yy = y0; yy < y1; yy++)
+                    for (int xx = x0; xx < x1; xx++) {
+                        u8 *c = &bd[i].cov[(yy - bd[i].y) * bd[i].w + xx - bd[i].x];
+                        if (!*c) { *c = 1; bd[i].ncov++; }
+                    }
+            if ((long)bd[i].ncov * 10 >= (long)bd[i].w * bd[i].h * 7) { bd_free(i); dirty = true; continue; }
+        }
+        bd[k++] = bd[i];
+    }
+    bd_n = k;
+}
+
 void ega_add_backdrop(u8 *ref, u32 *rgb, int page, int x, int y, int w, int h, int flags)
 {
     bool strict = flags & BD_STRICT;
     if (!ref || !rgb || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > 320 || page < 0 || page > 7) {
         free(ref); free(rgb); return;
     }
-    ega_drop_backdrops(page, x, y, w, h);
+    if (flags & (BD_CAR | BD_COPY)) ega_drop_backdrops(page, x, y, w, h);
+    else ega_cover_backdrops(page, x, y, w, h);                 /* a new picture over others counts as drawn over */
     if ((flags & BD_CAR) && !(flags & BD_COPY)) {               /* a car drawn: its earlier positions go */
         int k = 0;
         for (int i = 0; i < bd_n; i++) {
@@ -92,6 +123,8 @@ void ega_add_backdrop(u8 *ref, u32 *rgb, int page, int x, int y, int w, int h, i
     bd[bd_n].ref = ref; bd[bd_n].rgb = rgb; bd[bd_n].page = page;
     bd[bd_n].x = x; bd[bd_n].y = y; bd[bd_n].w = w; bd[bd_n].h = h; bd[bd_n].strict = strict;
     bd[bd_n].car = (flags & BD_CAR) != 0;
+    bd[bd_n].cov = NULL;
+    bd[bd_n].ncov = 0;
     bd_n++;
     dirty = true;
 }
@@ -118,7 +151,7 @@ void ega_copy_backdrops(int spage, int sx, int sy, int w, int h, int dpage, int 
         memcpy(r, bd[i].ref, n);
         memcpy(c, bd[i].rgb, n * sizeof(u32));
         add[na].ref = r; add[na].rgb = c; add[na].x = nx; add[na].y = ny; add[na].w = bd[i].w; add[na].h = bd[i].h;
-        add[na].flags = (bd[i].strict ? BD_STRICT : 0) | (bd[i].car ? BD_CAR : 0);
+        add[na].flags = (bd[i].strict ? BD_STRICT : 0) | (bd[i].car ? BD_CAR : BD_COPY);   /* a copied car still replaces the page's car */
         na++;
     }
     ega_drop_backdrops(dpage, dx, dy, w, h);                    /* overwritten */
@@ -253,7 +286,20 @@ static bool compose(u32 *xrgb)
     }
     int page = start_addr / 0x2000;
     const u8 *mask = (page < 4 && r3d_view_live()) ? page_mask[page] : NULL;
-    if (mask && page_checksum(page) != page_sum[page]) mask = NULL;
+    bool fill_only = false;                 /* the page changed since: see-through only where the fill (15) still is */
+    if (mask && page_checksum(page) != page_sum[page]) {
+        long n = 0, fill = 0;               /* something drawn over the view (shown), or a new screen (no mask) */
+        for (int y = 0; y < 200; y++)
+            for (int x = 0; x < 320; x++)
+                if (mask[y * 320 + x]) {
+                    u16 o = (u16)(page * 0x2000 + y * EGA_BYTES_PER_LINE + (x >> 3));
+                    int bit = 7 - (x & 7);
+                    n++;
+                    fill += ((planes[0][o] & planes[1][o] & planes[2][o] & planes[3][o]) >> bit) & 1;
+                }
+        if (n && fill * 10 >= n * 8) fill_only = true;
+        else mask = NULL;
+    }
     for (int y = 0; y < 200; y++) {
         u16 row = y < line_compare ? (u16)(start_addr + y * EGA_BYTES_PER_LINE)
                                    : (u16)((y - line_compare) * EGA_BYTES_PER_LINE);
@@ -265,7 +311,7 @@ static bool compose(u32 *xrgb)
             for (int bit = 7; bit >= 0; bit--) {
                 int c = (p0 >> bit & 1) | (p1 >> bit & 1) << 1 | (p2 >> bit & 1) << 2 | (p3 >> bit & 1) << 3;
                 u32 px = rgb[c];
-                if (m && m[b * 8 + 7 - bit]) px &= 0x00FFFFFFu;
+                if (m && m[b * 8 + 7 - bit] && (!fill_only || c == 15)) px &= 0x00FFFFFFu;
                 *out++ = px;
             }
         }

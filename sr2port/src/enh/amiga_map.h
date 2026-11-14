@@ -6,6 +6,8 @@
  * race_tables.png, start_tables.png): 7 for the town / garage / menus.
  * Numbers only; the pictures are the user's own files. */
 static const struct { short pc_id; unsigned char lib; short index; unsigned char pal; } amiga_map[] = {
+    { 1, 1, 39, 5 },                                           /* title (the Amiga's: the Mustang at sunset) */
+    { 3, 1, 30, 6 },                                           /* California Dreams logo (cut, tools/amiga_export.py) */
     { 4, 1, 31, 2 },                                           /* LIB1 #3 wanted poster */
     { 1001, 0, 115, 7 }, { 1002, 0, 132, 7 }, { 1003, 0, 116, 7 },   /* police book, driving licence, menu bar */
     { 1004, 0, 117, 7 }, { 1005, 0, 118, 7 }, { 1006, 0, 119, 7 },   /* load / save / forget it */

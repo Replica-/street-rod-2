@@ -34,6 +34,9 @@ void ega_set_page_mask(int page, const u8 *mask);   /* ENHANCED: 320x200 see-thr
 void ega_add_backdrop(u8 *ref, u32 *rgb, int page, int x, int y, int w, int h, int flags);
 void ega_copy_backdrops(int spage, int sx, int sy, int w, int h, int dpage, int dx, int dy);
 void ega_drop_backdrops(int page, int x, int y, int w, int h);
+/* PC drawing (a fill, a picture without a replacement) over (x, y, w, h): the regions inside go, the others count the
+ * pixels drawn over and go when 70 % of them are (a page built from several pieces) */
+void ega_cover_backdrops(int page, int x, int y, int w, int h);
 /* ENHANCED: where the mouse pointer is drawn (w = 0: none); its pixels do not decide whether a backdrop is on screen */
 void ega_pointer_rect(int x, int y, int w, int h);
 

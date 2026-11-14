@@ -80,7 +80,13 @@ void drv_recolour_rect(FarPtr d, s16 from, s16 to, s16 x0, s16 y0, s16 x1, s16 y
 void drv_pal_black(void) { ((FnVoid)drv_slot(7))(); }
 void drv_pal_normal(void) { ((FnVoid)drv_slot(8))(); }
 s16  drv_anim_step(u16 anim) { return ((FnAnimStep)drv_slot(9))(anim); }
-s16  drv_blinds(FarPtr dst, FarPtr src) { return ((FnBlinds)drv_slot(10))(dst, src); }
+s16  drv_blinds(FarPtr dst, FarPtr src)
+{
+    if (dst.seg >= 0xA000 && src.seg >= 0xA000)   /* ENHANCED: --amiga, the pictures go along (shown line by line) */
+        ega_copy_backdrops((int)(((u32)(src.seg - 0xA000) * 16u + src.off) / 0x2000), 0, 0, 320, 200,
+                           (int)(((u32)(dst.seg - 0xA000) * 16u + dst.off) / 0x2000), 0, 0);
+    return ((FnBlinds)drv_slot(10))(dst, src);
+}
 void drv_slide_sprite(s16 top, s16 bottom, s16 x, s16 from, s16 to, FarPtr spr, FarPtr alt)
 {
     ((FnSlide)drv_slot(11))(top, bottom, x, from, to, spr, alt);
