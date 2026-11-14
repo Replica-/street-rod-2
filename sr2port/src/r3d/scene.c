@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "r3d/gl.h"
+#include "r3d/rain.h"
 
 #define DEPTH_UNIT 64.0f
 #define FOCAL (4.0f * DEPTH_UNIT)               /* frame pixels */
@@ -27,7 +28,13 @@
 typedef struct { float x, y, z, r, g, b; } Vert;
 
 static GLuint prog, vao, vbo;
-static GLint loc_mvp, loc_eye, loc_fog;
+static GLint loc_mvp, loc_eye, loc_fog, loc_fogr;
+
+/* R2.1 weather: fog start, fog span, colour factor (wet / dim) */
+static bool rain;
+static float fog_range[3] = { 20000.0f, 50000.0f, 1.0f };
+
+void r3d_set_rain(bool on) { rain = on; }
 
 static const char *vs =
     "#version 330 core\n"
@@ -43,11 +50,12 @@ static const char *fs =
     "in vec3 w;\n"
     "uniform vec3 eye;\n"
     "uniform vec3 fog;\n"
+    "uniform vec3 fogr;\n"
     "out vec4 colour;\n"
     "void main() {\n"
     "    float d = length(w.xz - eye.xz);\n"
-    "    float f = clamp((d - 20000.0) / 50000.0, 0.0, 1.0);\n"
-    "    colour = vec4(mix(c, fog, f), 1.0);\n"
+    "    float f = clamp((d - fogr.x) / fogr.y, 0.0, 1.0);\n"
+    "    colour = vec4(mix(c * fogr.z, fog, f), 1.0);\n"
     "}\n";
 
 /* ---------------------------------------------------------------- track */
@@ -120,7 +128,7 @@ static void edges(int i, float *xl, float *xr)
 typedef struct { float x, y, z, u, v; } SVert;
 
 static GLuint sprog, svao, svbo, stex[R3D_SPRITE_SLOTS];
-static GLint sloc_mvp, sloc_eye, sloc_fog, sloc_tex;
+static GLint sloc_mvp, sloc_eye, sloc_fog, sloc_fogr, sloc_tex;
 static uint32_t shash[R3D_SPRITE_SLOTS];
 
 static const char *svs =
@@ -138,13 +146,14 @@ static const char *sfs =
     "uniform sampler2D tex;\n"
     "uniform vec3 eye;\n"
     "uniform vec3 fog;\n"
+    "uniform vec3 fogr;\n"
     "out vec4 colour;\n"
     "void main() {\n"
     "    vec4 c = texture(tex, t);\n"
     "    if (c.a < 0.5) discard;\n"
     "    float d = length(w.xz - eye.xz);\n"
-    "    float f = clamp((d - 20000.0) / 50000.0, 0.0, 1.0);\n"
-    "    colour = vec4(mix(c.rgb, fog, f), 1.0);\n"
+    "    float f = clamp((d - fogr.x) / fogr.y, 0.0, 1.0);\n"
+    "    colour = vec4(mix(c.rgb * fogr.z, fog, f), 1.0);\n"
     "}\n";
 
 void r3d_sprite_upload(int slot, const uint32_t *bgra, int w, int h)
@@ -167,6 +176,7 @@ static bool sprites_init(void)
     sloc_eye = gl.GetUniformLocation(sprog, "eye");
     sloc_fog = gl.GetUniformLocation(sprog, "fog");
     sloc_tex = gl.GetUniformLocation(sprog, "tex");
+    sloc_fogr = gl.GetUniformLocation(sprog, "fogr");
     gl.GenTextures(R3D_SPRITE_SLOTS, stex);
     for (int i = 0; i < R3D_SPRITE_SLOTS; i++) {
         gl.BindTexture(GL_TEXTURE_2D, stex[i]);
@@ -222,6 +232,7 @@ static void sprite_draw(const R3dSprite *s, float cam_yaw, const float *mvp, con
     gl.UniformMatrix4fv(sloc_mvp, 1, GL_FALSE, mvp);
     gl.Uniform3f(sloc_eye, eye[0], eye[1], eye[2]);
     gl.Uniform3f(sloc_fog, fog[0], fog[1], fog[2]);
+    gl.Uniform3f(sloc_fogr, fog_range[0], fog_range[1], fog_range[2]);
     gl.Uniform1i(sloc_tex, 0);
     gl.ActiveTexture(GL_TEXTURE0);
     gl.BindTexture(GL_TEXTURE_2D, stex[s->slot]);
@@ -278,6 +289,7 @@ static void scenery_draw(int first, int last, float cam_yaw, const float *mvp, c
     gl.UniformMatrix4fv(sloc_mvp, 1, GL_FALSE, mvp);
     gl.Uniform3f(sloc_eye, eye[0], eye[1], eye[2]);
     gl.Uniform3f(sloc_fog, fog[0], fog[1], fog[2]);
+    gl.Uniform3f(sloc_fogr, fog_range[0], fog_range[1], fog_range[2]);
     gl.Uniform1i(sloc_tex, 0);
     gl.ActiveTexture(GL_TEXTURE0);
     gl.BindVertexArray(svao);
@@ -316,10 +328,11 @@ static void scenery_draw(int first, int last, float cam_yaw, const float *mvp, c
 bool r3d_scene_init(void)
 {
     prog = r3d_program(vs, fs);
-    if (!prog || !sprites_init()) return false;
+    if (!prog || !sprites_init() || !r3d_rain_init()) return false;
     loc_mvp = gl.GetUniformLocation(prog, "mvp");
     loc_eye = gl.GetUniformLocation(prog, "eye");
     loc_fog = gl.GetUniformLocation(prog, "fog");
+    loc_fogr = gl.GetUniformLocation(prog, "fogr");
     gl.GenVertexArrays(1, &vao);
     gl.GenBuffers(1, &vbo);
     gl.BindVertexArray(vao);
@@ -337,6 +350,7 @@ void r3d_scene_shutdown(void)
     for (int t = 0; t < R3D_SHAPES; t++)
         if (shp[t].tex) gl.DeleteTextures(1, &shp[t].tex);
     memset(shp, 0, sizeof shp);
+    r3d_rain_shutdown();
     sprites_shutdown();
     if (vbo) gl.DeleteBuffers(1, &vbo);
     if (vao) gl.DeleteVertexArrays(1, &vao);
@@ -475,8 +489,12 @@ static void build_channel(int first, int last, const R3dView *v)
 
 void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
 {
-    (void)vw; (void)vh;
-    const float sky[3] = { 0.36f, 0.56f, 0.86f }, haze[3] = { 0.70f, 0.80f, 0.92f };
+    float sky[3] = { 0.36f, 0.56f, 0.86f }, haze[3] = { 0.70f, 0.80f, 0.92f };
+    if (rain) {                                            /* R2.1: overcast, short visibility, wet and dim */
+        sky[0] = 0.42f; sky[1] = 0.46f; sky[2] = 0.52f;
+        haze[0] = 0.46f; haze[1] = 0.50f; haze[2] = 0.55f;
+        fog_range[0] = 2500.0f; fog_range[1] = 30000.0f; fog_range[2] = 0.72f;
+    } else { fog_range[0] = 20000.0f; fog_range[1] = 50000.0f; fog_range[2] = 1.0f; }
     gl.ClearColor(sky[0], sky[1], sky[2], 1);
     gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     if (!have_trk) return;
@@ -518,6 +536,7 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
     gl.UniformMatrix4fv(loc_mvp, 1, GL_FALSE, mvp);
     gl.Uniform3f(loc_eye, ex, ey, ez);
     gl.Uniform3f(loc_fog, haze[0], haze[1], haze[2]);
+    gl.Uniform3f(loc_fogr, fog_range[0], fog_range[1], fog_range[2]);
     gl.BindVertexArray(vao);
     gl.BindBuffer(GL_ARRAY_BUFFER, vbo);
     gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(nv * sizeof(Vert)), verts, GL_STREAM_DRAW);
@@ -528,4 +547,13 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
     scenery_draw(first, last, yaw, mvp, eye, haze);
     sprite_draw(&v->opp, yaw, mvp, eye, haze);
     sprite_draw(&v->tree, yaw, mvp, eye, haze);
+    if (rain) {                                            /* R2.1 */
+        if (!mirror) r3d_rain_update(eye);
+        r3d_rain_draw_world(mvp);
+        if (!mirror) {
+            gl.Disable(GL_DEPTH_TEST);
+            r3d_rain_draw_screen((float)vw / (float)(vh > 0 ? vh : 1));
+            gl.Enable(GL_DEPTH_TEST);
+        }
+    }
 }

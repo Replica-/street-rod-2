@@ -20,6 +20,9 @@ bool r3d_active(void);
 void r3d_set_classic(bool on);
 bool r3d_classic(void);
 
+/* --rain (R2.1): rain in the 3D race view (falling streaks, drops on the windscreen, grey sky, wet road). */
+void r3d_set_rain(bool on);
+
 /* The letterboxed picture rectangle inside a w x h area (4:3). */
 void r3d_letterbox(float w, float h, float *x, float *y, float *rw, float *rh);
 

@@ -1,11 +1,12 @@
 # Street Rod 2 Enhanced — plan
 
 ## Status
-Set up 2026-11-14 from the faithful port (`../street-rod-2` at 75326ff). Phase R1 (3D race view) done 2026-11-14. Next: **R2.1** (rain).
+Set up 2026-11-14 from the faithful port (`../street-rod-2` at 75326ff). Phase R1 (3D race view) done 2026-11-14. Next: **R2.2** (spray, tyre smoke).
 
 ## User to-do
 | What | Why |
 |---|---|
+| Try `--rain`: rain, drops on the windscreen, overcast | R2.1 |
 | Drive a cruise and a Mulholland race in the 3D view: smooth? road where you expect it, curves and hills feel right? (`--classic` = old view) | R1.2 / R1.3 |
 | Play a little in the new OpenGL window: title, garage, a race; resize the window, Alt+Enter, mouse clicks land where the pointer is | R1.1 replaced SDL's renderer; it should look and click exactly as before |
 
@@ -28,7 +29,7 @@ renderer instead of the original road routines; the dashboard, cockpit overlay a
 ## Phase R2 — effects
 | Id | Task | Size | Status |
 |---|---|---|---|
-| R2.1 | Rain: particles, streaks on the windscreen, wet road (darker, reflections) | M | |
+| R2.1 | Rain: particles, streaks on the windscreen, wet road (darker, reflections) | M | done 2026-11-14 (no reflections yet) |
 | R2.2 | Spray and tyre smoke behind cars | S | |
 | R2.3 | Fog / dusk / night lighting with headlights | M | |
 
@@ -51,5 +52,6 @@ Notes:
 - R1.6: drag strip = flags L2/R2/C2[seg], geometry YAW[seg + 0xC0], flat (race3d.c accessors); barrier walls 50 high in 5-segment blocks colour 11 / 4 from DS:96F4; start tree = panel picture DS:9A40 (lamps composed in by the original each frame) cropped to its nearest size, sprite at start_seg + 4. The starter figure (a85c) is the 2D starter slide overlay, unchanged. Checked headless on Grudge Night.
 - R1.7: the original's Aqueduct is straight and flat (aq_project_front uses the heading only), so the 3D channel is straight: floor 0x5C8..0xCF8, walls to 0x438 / 0xE88 at 340 above, plus the per-frame deformation a094 sets (DS:985E, A2B8, A7A6, A5FA, 9A5A, 9B14), camera x clamped 0x564..0xD5C, roll = atan2(DS:A540, DS:BA90). Flags 3726:4E62: joint lines, trough, wall openings, white bands. Opponent = the original's chosen (rotated) picture. Not done: pillars (0x80), low box (0x10), SR2_SHP format-B objects (0x20 / 0x40). Checked headless.
 - R1.8: page masks now also need the page's view area unchanged since the mask was made (checksum in ega.c), so a crash picture or the next screen drawn on that page shows whole. Bob's Drive-In run checked headless (town cruise 3D, the bungalow screen whole, the race 3D). `SR_SMOKE_3D=1 python tools/sr2_smoke.py` runs the smoke tests with the hidden OpenGL window: all 8 race tests ok with the 3D path, same timings as 2D; full suite (2D path) 15/15 ok.
+- R2.1: `--rain` (`r3d/rain.c`): 2500 world streaks in a 10000-unit box around the eye (fall 2500 units/s, slanted by the car's smoothed velocity), windscreen drops in screen space (drawn after the 3D scene, under the 2D cockpit), overcast sky, fog from 2500 over 30000, colours x0.72. Mirror gets the streaks, not the drops. Not done: road reflections.
 - Why 3D straight away: the 2D renderer only gets ~6 position updates a second (physics every 12th tick, frames every
   8 ticks), so smoothness needs interpolation either way; doing it in 3D also makes rain and effects possible.
