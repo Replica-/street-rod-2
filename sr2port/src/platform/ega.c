@@ -18,12 +18,27 @@ const u32 ega_palette[16] = {
 };
 
 /* ENHANCED (R1.2): see-through masks of the race pages (index = page number = start address / 2000h), 320 x 200,
- * 1 = the 3D race view shows through. Applied only while a 3D race view is live. */
+ * 1 = the 3D race view shows through. Applied only while a 3D race view is live and the page still holds what it
+ * held when the mask was made (R1.8: a crash picture or the next screen drawn on that page is shown whole). */
 static const u8 *page_mask[4];
+static u32 page_sum[4];
+
+static u32 page_checksum(int page)
+{
+    u32 h = 2166136261u, base = (u32)page * 0x2000u;
+    for (int p = 0; p < 4; p++)
+        for (u32 o = 18 * EGA_BYTES_PER_LINE; o < 102 * EGA_BYTES_PER_LINE; o++)
+            h = (h ^ planes[p][(base + o) & 0xFFFF]) * 16777619u;
+    return h;
+}
 
 void ega_set_page_mask(int page, const u8 *mask)
 {
-    if (page >= 0 && page < 4) { page_mask[page] = mask; dirty = true; }
+    if (page >= 0 && page < 4) {
+        page_mask[page] = mask;
+        if (mask) page_sum[page] = page_checksum(page);
+        dirty = true;
+    }
 }
 
 static bool compose(u32 *xrgb)
@@ -37,6 +52,7 @@ static bool compose(u32 *xrgb)
     }
     int page = start_addr / 0x2000;
     const u8 *mask = (page < 4 && r3d_view_live()) ? page_mask[page] : NULL;
+    if (mask && page_checksum(page) != page_sum[page]) mask = NULL;
     for (int y = 0; y < 200; y++) {
         u16 row = y < line_compare ? (u16)(start_addr + y * EGA_BYTES_PER_LINE)
                                    : (u16)((y - line_compare) * EGA_BYTES_PER_LINE);

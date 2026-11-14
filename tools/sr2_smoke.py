@@ -73,6 +73,9 @@ def run_path(name, spec, exe):
     env = dict(os.environ, SDL_VIDEO_DRIVER="dummy", SDL_AUDIO_DRIVER="dummy", SR_TRACE="1", SR_SEED="1",
                SR_SNAPSHOT_DIR=snap, SR_SNAPSHOT_MS="4000", SR_KEYS=",".join(spec.get("keys", [])))
     env.update(spec.get("env", {}))
+    if os.environ.get("SR_SMOKE_3D"):        # ENHANCED: an invisible OpenGL window, so the 3D race path runs
+        del env["SDL_VIDEO_DRIVER"]
+        env["SR_HIDDEN"] = "1"
     cap = spec["cap"]
     cmd = [exe, "--game-dir", game, "--run-ms", str(cap * 1000)] + spec["args"]
     t0 = time.time()
