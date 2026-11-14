@@ -28,7 +28,7 @@ static u8 saved[4][(VIEW_Y1 - VIEW_Y0 + 1) * EGA_BYTES_PER_LINE];
 bool race3d_on(void)
 {
     if (!r3d_active() || r3d_classic()) return false;
-    return MODE == 0 || MODE == 1 || MODE == 0x10;           /* R1.3; drag strips R1.6, Aqueduct R1.7 */
+    return MODE == 0 || MODE == 1 || MODE == 2 || MODE == 4 || MODE == 0x10;    /* Aqueduct (8): R1.7 */
 }
 
 static u32 page_base(void) { return (u32)DSS(DS_back_page) * 0x2000u; }
@@ -158,6 +158,19 @@ static void opp_sprite(R3dSprite *o)
     o->along = s == 0;
 }
 
+/* ---------------------------------------------------------------- track access */
+
+/* The drag strip (modes 2, 4; road_set_seg_ptrs 056a) reads its flags from L2 / R2 / C2[seg] (0x74 entries) and
+ * the geometry from seg + 0xC0, flat. */
+#define DRAG_N 0x74
+static bool drag(void) { return (MODE & 6) != 0; }
+static int geo(int i) { return drag() ? (i + 0xC0 < R3D_TRACK_N ? i + 0xC0 : R3D_TRACK_N - 1) : i; }
+static u16 flag_l(int i) { return drag() ? (i < DRAG_N ? TRKW(TRK_L2, i) : 0) : TRKW(TRK_L, i); }
+static u16 flag_r(int i) { return drag() ? (i < DRAG_N ? TRKW(TRK_R2, i) : 0) : TRKW(TRK_R, i); }
+static u16 flag_c(int i) { return drag() ? (i < DRAG_N ? TRKW(TRK_C2, i) : 0) : TRKW(TRK_C, i); }
+static s16 bank_l(int i) { return drag() ? 0 : TRKS(TRK_BL, i); }
+static s16 bank_r(int i) { return drag() ? 0 : TRKS(TRK_BR, i); }
+
 /* ---------------------------------------------------------------- scenery (R1.4) */
 
 /* SR2_SHP format-A set at DS:8172[type]: {u16 n_lods; LodRec far *recs}; LodRec = 16 bytes: 6 x {u8 colour, u8 count}
@@ -247,8 +260,8 @@ static int build_objects(void)
 #define ADD(xx, t, sd) do { if (n < MAX_OBJECTS) { objs[n].seg = (int16_t)i; objs[n].x = (int16_t)(xx); \
         objs[n].type = (uint8_t)(t); objs[n].side = (int8_t)(sd); n++; } } while (0)
     for (int i = 0; i < R3D_TRACK_N; i++) {
-        u16 L = TRKW(TRK_L, i), R = TRKW(TRK_R, i), C = TRKW(TRK_C, i);
-        bool cross = C & 1, flat_l = TRKS(TRK_BL, i) == 0, flat_r = TRKS(TRK_BR, i) == 0;
+        u16 L = flag_l(i), R = flag_r(i), C = flag_c(i);
+        bool cross = C & 1, flat_l = bank_l(i) == 0, flat_r = bank_r(i) == 0;
         int xl, xr;
         road_edges(C, &xl, &xr);
         if (mode != 0x10 && (L & 0x20)) ADD(xl, 0, -1);
@@ -288,7 +301,7 @@ static int build_objects(void)
         if (!(mode & 6) && (R & 1) && !cross && flat_r) ADD(xr, 1, -1);
         if (mode == 0x10 && (R & 0x10)) ADD(xr + 150, 8, -1);
         if (mode == 0x10 && (C & 4)) {
-            s16 x6 = TRKS(TRK_LANE, i);
+            s16 x6 = TRKS(TRK_LANE, geo(i));
             ADD(xl + ((x6 * (xr - xl)) >> 4), 7, x6 < 9 ? -1 : 1);
         }
     }
@@ -302,7 +315,7 @@ static void push_scenery(void)
     static int last_mode = -1;
     u32 sum = 2166136261u;
     for (int i = 0; i < R3D_TRACK_N; i++)
-        sum = (sum ^ (TRKW(TRK_L, i) | (u32)TRKW(TRK_R, i) << 16) ^ TRKW(TRK_C, i)) * 16777619u;
+        sum = (sum ^ (flag_l(i) | (u32)flag_r(i) << 16) ^ flag_c(i)) * 16777619u;
     u32 rgb[16];
     for (int i = 0; i < 16; i++) {
         u8 v = ega_get_palette_reg(i);
@@ -315,18 +328,43 @@ static void push_scenery(void)
     r3d_objects_set(objs, build_objects());
 }
 
+/* The drag strip's start lights (road_draw_start_tree aab0): the panel picture DS:9A40 with its lamps composed in,
+ * nearest size = columns 0x48.. (56 x 87), at segment start_seg + 4 between the road edges; world size from the
+ * middle size (40 x 69 at rows 2 / 3, z ~ 20: 5 world units per pixel). */
+static void tree_sprite(R3dSprite *o)
+{
+    memset(o, 0, sizeof *o);
+    if (!drag()) return;
+    int w, h;
+    if (!decode_pic(ds_far(DS_start_panel_pic), &w, &h)) return;
+    int x0 = 0x48, cw = 0x38, ch = 0x57;
+    if (x0 + cw > w) { x0 = 0; cw = w; }
+    if (ch > h) ch = h;
+    static u32 crop[0x80 * 0x60];
+    if (cw * ch > (int)(sizeof crop / sizeof crop[0])) return;
+    for (int y = 0; y < ch; y++) memcpy(crop + y * cw, pic_px + y * w + x0, (size_t)cw * sizeof(u32));
+    r3d_sprite_upload(1, crop, cw, ch);
+    o->vis = true;
+    o->slot = 1;
+    o->pos = (float)(DSS(DS_start_seg) + 4);
+    o->lat = 2400.0f;
+    o->h = 69.0f * 5.0f;
+    o->w = o->h * (float)cw / (float)ch;
+}
+
 static void push_track(void)
 {
     static R3dTrack t;
     for (int i = 0; i < R3D_TRACK_N; i++) {
-        t.yaw[i] = TRKS(TRK_YAW, i);
-        t.hgt[i] = TRKS(TRK_HGT, i);
-        t.l[i] = TRKW(TRK_L, i);
-        t.r[i] = TRKW(TRK_R, i);
-        t.c[i] = TRKW(TRK_C, i);
-        t.bl[i] = TRKS(TRK_BL, i);
-        t.br[i] = TRKS(TRK_BR, i);
+        t.yaw[i] = TRKS(TRK_YAW, geo(i));
+        t.hgt[i] = drag() ? 0 : TRKS(TRK_HGT, i);
+        t.l[i] = flag_l(i);
+        t.r[i] = flag_r(i);
+        t.c[i] = flag_c(i);
+        t.bl[i] = bank_l(i);
+        t.br[i] = bank_r(i);
     }
+    t.wall_phase = drag() ? DSS(DS_rail_phase_seg) : -1;
     r3d_track_set(&t);
 }
 
@@ -342,8 +380,10 @@ static void push_view(void)
     v.opp_pos = (float)DSS(DS_opp_seg) + (float)(DSS(DS_opp_seg_frac64) & 0x3F) / 64.0f;
     v.opp_lat = (float)DSS(DS_opp_lat);
     v.mode = MODE;
+    if (drag()) v.height = 0;                              /* flat; the HGT pointer is not advanced there */
     push_scenery();
     opp_sprite(&v.opp);
+    tree_sprite(&v.tree);
     r3d_view_push(&v);
 }
 

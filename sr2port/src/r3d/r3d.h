@@ -63,6 +63,7 @@ typedef struct {
     float opp_lat;      /* opponent lateral position */
     int mode;           /* road mode DS:ADD6 */
     R3dSprite opp;      /* the opponent's car (R1.4) */
+    R3dSprite tree;     /* the drag strip's start lights (R1.6) */
 } R3dView;
 
 void r3d_view_push(const R3dView *v);
@@ -77,6 +78,7 @@ typedef struct {
     uint16_t c[R3D_TRACK_N];    /* centre flags: low byte & 0xE0 = road width, & 8 = dash, & 0x10 = white */
     int16_t bl[R3D_TRACK_N];    /* left bank: > 0 hillside, < 0 drop-off (Mulholland) */
     int16_t br[R3D_TRACK_N];    /* right bank */
+    int16_t wall_phase;         /* drag strip (R1.6): barrier walls, colour blocks of 5 from this segment; -1 = none */
 } R3dTrack;
 void r3d_track_set(const R3dTrack *t);
 /* True while the race code keeps pushing views (3D race view on screen). */

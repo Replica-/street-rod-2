@@ -417,6 +417,15 @@ static void build(int first, int last, int mode)
         if (sr > xr) band(p0, p1, xr, sr, 0, 0, 0, 0, alt ? 0.62f : 0.57f, alt ? 0.52f : 0.48f, 0.34f);
         /* centre dash (C & 8) */
         if (trk.c[i] & 8) band(p0, p1 - 0.5f, X_MID - 20, X_MID + 20, 3, 3, 3, 3, 0.95f, 0.95f, 0.92f);
+        /* drag strip barrier walls (597e): road edges up to world height 0x79E (50 above the road), blocks of five
+         * segments in colour 0x0B / 4 */
+        if (trk.wall_phase >= 0) {
+            int ph = i - trk.wall_phase;
+            bool cyan = (ph < 0 ? -ph : ph) % 10 < 5;
+            float r = cyan ? 0.33f : 0.67f, g = cyan ? 1.0f : 0.0f, b = cyan ? 1.0f : 0.0f;
+            band(p0, p1, xl, xl, 0, 50, 0, 50, r, g, b);
+            band(p0, p1, xr, xr, 0, 50, 0, 50, r, g, b);
+        }
         /* banks (Mulholland): hillside (> 0) or drop-off (< 0) beyond the shoulder, then flat ground */
         int i1 = i + 1 < R3D_TRACK_N ? i + 1 : i;
         float bl0 = trk.bl[i], bl1 = trk.bl[i1], br0 = trk.br[i], br1 = trk.br[i1];
@@ -483,4 +492,5 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
     const float eye[3] = { ex, ey, ez };
     scenery_draw(first, last, yaw, mvp, eye, haze);
     sprite_draw(&v->opp, yaw, mvp, eye, haze);
+    sprite_draw(&v->tree, yaw, mvp, eye, haze);
 }
