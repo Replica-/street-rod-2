@@ -43,7 +43,7 @@ PAINT_PICS = {2011, 2012, 2019}
 # the driver's hands on the steering wheel (Amiga #79 left, #80 right), as the Amiga race view shows them: on the rim
 # where it meets the bottom of the screen, centred at (left x, right x, y) of each dashboard. Their colours 6, 7, 8, 9,
 # 11, 12 and the half-bright 43, 44 are one skin ramp, lit to shadow (the Amiga sets 6-9 per screen band)
-HANDS = {2011: (85, 257, 71), 2012: (85, 257, 71), 2019: (85, 257, 71)}
+HANDS = {2011: (85, 260, 71), 2012: (85, 260, 71), 2019: (85, 260, 71)}
 HAND_SKIN = {6: (250, 210, 170), 7: (236, 190, 148), 8: (218, 168, 126), 9: (196, 144, 104), 11: (170, 120, 84),
              12: (142, 98, 66), 39: (150, 108, 76), 40: (136, 96, 66), 41: (120, 82, 56), 43: (110, 74, 50),
              44: (88, 58, 38)}
