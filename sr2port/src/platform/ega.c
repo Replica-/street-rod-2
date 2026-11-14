@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "host.h"
+#include "r3d/r3d.h"
 
 static u8 planes[4][EGA_PLANE_SIZE];
 static u16 start_addr;
@@ -16,6 +17,15 @@ const u32 ega_palette[16] = {
     0x555555, 0x5555FF, 0x55FF55, 0x55FFFF, 0xFF5555, 0xFF55FF, 0xFFFF55, 0xFFFFFF,
 };
 
+/* ENHANCED (R1.2): see-through masks of the race pages (index = page number = start address / 2000h), 320 x 200,
+ * 1 = the 3D race view shows through. Applied only while a 3D race view is live. */
+static const u8 *page_mask[4];
+
+void ega_set_page_mask(int page, const u8 *mask)
+{
+    if (page >= 0 && page < 4) { page_mask[page] = mask; dirty = true; }
+}
+
 static bool compose(u32 *xrgb)
 {
     if (!dirty) return false;
@@ -23,18 +33,23 @@ static bool compose(u32 *xrgb)
     u32 rgb[16];
     for (int i = 0; i < 16; i++) {
         u8 v = palette_reg[i];              /* 200-line decoding: bits 0-2 BGR, bit 4 intensity */
-        rgb[i] = ega_palette[(v & 7) | (v >> 1 & 8)];
+        rgb[i] = ega_palette[(v & 7) | (v >> 1 & 8)] | 0xFF000000u;   /* ENHANCED: alpha = opaque */
     }
+    int page = start_addr / 0x2000;
+    const u8 *mask = (page < 4 && r3d_view_live()) ? page_mask[page] : NULL;
     for (int y = 0; y < 200; y++) {
         u16 row = y < line_compare ? (u16)(start_addr + y * EGA_BYTES_PER_LINE)
                                    : (u16)((y - line_compare) * EGA_BYTES_PER_LINE);
         u32 *out = xrgb + y * 320;
+        const u8 *m = (mask && y < line_compare) ? mask + y * 320 : NULL;
         for (int b = 0; b < EGA_BYTES_PER_LINE; b++) {
             u16 o = (u16)(row + b);
             u8 p0 = planes[0][o], p1 = planes[1][o], p2 = planes[2][o], p3 = planes[3][o];
             for (int bit = 7; bit >= 0; bit--) {
                 int c = (p0 >> bit & 1) | (p1 >> bit & 1) << 1 | (p2 >> bit & 1) << 2 | (p3 >> bit & 1) << 3;
-                *out++ = rgb[c];
+                u32 px = rgb[c];
+                if (m && m[b * 8 + 7 - bit]) px &= 0x00FFFFFFu;
+                *out++ = px;
             }
         }
     }

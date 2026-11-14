@@ -11,6 +11,7 @@
  * original (imul low word, sar, idiv). */
 #include "game/race_int.h"
 #include "game/race.h"
+#include "game/race3d.h"
 
 #include "host.h"
 #include "platform/platform.h"
@@ -1430,6 +1431,14 @@ static void road_draw_mirror(void)
 
 /* ================================================================================ frame, step */
 
+/* the overlay step of road_frame (also run twice by race3d_overlays) */
+static void road_draw_overlays(void)
+{
+    road_draw_hood_overlay();
+    if (DSB(DS_racing) && !(MODE & 6)) road_draw_starter_slide();
+    road_draw_cockpit_overlay();
+}
+
 /* 0dcb:11fc road_frame */
 void road_frame(void)
 {
@@ -1448,9 +1457,8 @@ void road_frame(void)
         aq_draw_mirror();
     } else { road_set_seg_ptrs(DSS(DS_seg)); road_draw_mirror(); }
     road_fillmode_end();
-    road_draw_hood_overlay();
-    if (DSB(DS_racing) && !(MODE & 6)) road_draw_starter_slide();
-    road_draw_cockpit_overlay();
+    if (race3d_on()) race3d_overlays(road_draw_overlays);         /* ENHANCED: 3D view behind the overlays */
+    else road_draw_overlays();
     road_page_flip();
     pace_ticks(8);
 }

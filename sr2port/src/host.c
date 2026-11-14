@@ -56,8 +56,10 @@ bool host_init(const char *dir, int window_scale, bool fullscreen)
     }
     game_dir = SDL_strdup(dir);
     if (window_scale < 1) window_scale = 3;
+    /* ENHANCED: SR_HIDDEN=1 (developer aid) = an invisible window with OpenGL, for headless 3D snapshot runs */
+    SDL_WindowFlags hidden = SDL_getenv("SR_HIDDEN") ? SDL_WINDOW_HIDDEN : 0;
     window = SDL_CreateWindow("Street Rod 2", 320 * window_scale, 240 * window_scale,
-                              SDL_WINDOW_RESIZABLE | r3d_window_flags());
+                              SDL_WINDOW_RESIZABLE | r3d_window_flags() | hidden);
     if (!window) window = SDL_CreateWindow("Street Rod 2", 320 * window_scale, 240 * window_scale, SDL_WINDOW_RESIZABLE);
     if (!window) {
         fprintf(stderr, "window failed: %s\n", SDL_GetError());
@@ -385,18 +387,19 @@ static void snapshot(void)
     Uint64 now = SDL_GetTicksNS();
     if (n && now - last_ns < interval_ns) return;
     last_ns = now;
-    SDL_Surface *s = SDL_CreateSurfaceFrom(frame_w, frame_h, SDL_PIXELFORMAT_XRGB8888, frame, frame_w * 4);
-    if (!s) return;
     char path[512];
     SDL_snprintf(path, sizeof path, "%s/snap%04d.bmp", dir, n++);
+    if (r3d_save_bmp(path)) return;                 /* ENHANCED: the presented picture, 3D view included */
+    SDL_Surface *s = SDL_CreateSurfaceFrom(frame_w, frame_h, SDL_PIXELFORMAT_XRGB8888, frame, frame_w * 4);
+    if (!s) return;
     SDL_SaveBMP(s, path);
     SDL_DestroySurface(s);
 }
 
 static void present(void)
 {
-    snapshot();
     r3d_present(frame, frame_w, frame_h);
+    snapshot();
 }
 
 static Uint64 last_present_ns;
@@ -533,9 +536,11 @@ void host_pump(void)
         clock_start_ns = now - (tick_due_ns(ticks_run) - clock_start_ns);
     }
 
-    /* Present at most once per ~8 ms; VSync paces it further. */
+    /* Present at most once per ~8 ms; VSync paces it further. ENHANCED: every time while the 3D race view is live
+     * (it moves between the game's frames). */
     if (frame_source && now - last_present_ns >= 8 * SDL_NS_PER_MS) {
-        if (frame_source(frame)) {
+        bool changed = frame_source(frame);
+        if (changed || r3d_view_live()) {
             present();
             last_present_ns = SDL_GetTicksNS();
             worked = true;
