@@ -7,6 +7,7 @@
  *   --classic     ENHANCED: the original 2D race view instead of the 3D one
  *   --rain        ENHANCED: rain in the 3D race view
  *   --protection  show the copy protection question (skipped by default; it accepts any answer)
+ *   --amiga       ENHANCED: the Amiga release's pictures where they exist (garage), from Game/amiga
  *   --dusk, --night  ENHANCED: time of day in the 3D race view (night: headlights)
  *   --check       load and verify the original executable, print a summary and exit (no window)
  *   --run-ms N    developer aid: exit after N ms (headless snapshot runs)
@@ -22,13 +23,14 @@
 
 #include "game/game.h"
 #include "r3d/r3d.h"
+#include "enh/amiga.h"
 #include "host.h"
 #include "mem.h"
 #include "platform/ega.h"
 
 static int usage(const char *prog)
 {
-    fprintf(stderr, "usage: %s [--game-dir DIR] [--scale N] [--fullscreen] [--classic] [--protection] [--rain] [--dusk|--night] [--check] [--run-ms N] "
+    fprintf(stderr, "usage: %s [--game-dir DIR] [--scale N] [--fullscreen] [--classic] [--amiga] [--protection] [--rain] [--dusk|--night] [--check] [--run-ms N] "
                     "[1] [nomouse] [demo] [nouemem] [e|c|v|h|t]\n", prog);
     return 2;
 }
@@ -51,7 +53,7 @@ int main(int argc, char **argv)
     int game_argc = 0;
     game_argv[game_argc++] = argv[0];
     int scale = 3;
-    bool check = false, fullscreen = false;
+    bool check = false, fullscreen = false, want_amiga = false;
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
         if (!strcmp(a, "--game-dir") && v) { dir = v; i++; }
@@ -61,6 +63,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--classic")) r3d_set_classic(true);      /* ENHANCED */
         else if (!strcmp(a, "--rain")) r3d_set_rain(true);            /* ENHANCED */
         else if (!strcmp(a, "--protection")) game_show_protection = true;   /* PORT: user decision */
+        else if (!strcmp(a, "--amiga")) want_amiga = true;           /* ENHANCED */
         else if (!strcmp(a, "--dusk")) r3d_set_time_of_day(1);        /* ENHANCED */
         else if (!strcmp(a, "--night")) r3d_set_time_of_day(2);       /* ENHANCED */
         else if (!strcmp(a, "--check")) check = true;
@@ -81,6 +84,7 @@ int main(int argc, char **argv)
     }
 
     if (!host_init(dir, scale, fullscreen)) return 1;
+    amiga_init(want_amiga);                       /* ENHANCED: --amiga */
     ega_init();                     /* 16-colour planar display: frame source, planes */
     game_argv[game_argc] = NULL;
     return game_main(game_argc, game_argv);     /* the original's switches (1, nomouse, demo, nouemem, e c v h t) are read there */

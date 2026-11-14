@@ -1,6 +1,8 @@
 #include "platform/ega.h"
 
+#include <stdio.h>
 #include <string.h>
+#include <SDL3/SDL.h>
 
 #include "host.h"
 #include "r3d/r3d.h"
@@ -41,6 +43,50 @@ void ega_set_page_mask(int page, const u8 *mask)
     }
 }
 
+/* ENHANCED (--amiga, enh/amiga.c): a backdrop in full colour. ref = the colour indices of the PC backdrop as the game
+ * put it on screen, rgb = the replacement; where the screen still shows the backdrop pixel, the replacement is shown.
+ * Only while most of the area matches (the backdrop is on screen), so it turns itself off on other screens. */
+static const u8 *bd_ref;
+static const u32 *bd_rgb;
+static int bd_x, bd_y, bd_w, bd_h;
+
+void ega_set_backdrop(const u8 *ref, const u32 *rgb, int x, int y, int w, int h)
+{
+    bd_ref = ref; bd_rgb = rgb; bd_x = x; bd_y = y; bd_w = w; bd_h = h;
+    dirty = true;
+}
+
+static void apply_backdrop(u32 *xrgb)
+{
+    static u8 idx[320 * 200];
+    if (!bd_ref || bd_x < 0 || bd_y < 0 || bd_x + bd_w > 320 || bd_y + bd_h > 200) return;
+    int same = 0;
+    for (int y = 0; y < bd_h; y++) {
+        int sy = bd_y + y;
+        u16 row = sy < line_compare ? (u16)(start_addr + sy * EGA_BYTES_PER_LINE)
+                                    : (u16)((sy - line_compare) * EGA_BYTES_PER_LINE);
+        for (int x = 0; x < bd_w; x++) {
+            int sx = bd_x + x;
+            u16 o = (u16)(row + (sx >> 3));
+            int bit = 7 - (sx & 7);
+            int c = (planes[0][o] >> bit & 1) | (planes[1][o] >> bit & 1) << 1 | (planes[2][o] >> bit & 1) << 2 |
+                    (planes[3][o] >> bit & 1) << 3;
+            idx[y * bd_w + x] = (u8)c;
+            same += c == bd_ref[y * bd_w + x];
+        }
+    }
+    if (same * 10 < bd_w * bd_h * 6) return;                    /* under 60 %: not the backdrop's screen */
+    /* a pixel is backdrop when it and its 4 neighbours still match: something drawn on top in the backdrop's own
+     * colour (the garage name in colour 0 on its white box, where the composed backdrop is 0) stays the game's */
+#define BD_SAME(xx, yy) ((xx) < 0 || (yy) < 0 || (xx) >= bd_w || (yy) >= bd_h || \
+                         idx[(yy) * bd_w + (xx)] == bd_ref[(yy) * bd_w + (xx)])
+    for (int y = 0; y < bd_h; y++)
+        for (int x = 0; x < bd_w; x++)
+            if (BD_SAME(x, y) && BD_SAME(x - 1, y) && BD_SAME(x + 1, y) && BD_SAME(x, y - 1) && BD_SAME(x, y + 1))
+                xrgb[(bd_y + y) * 320 + bd_x + x] = bd_rgb[y * bd_w + x];
+#undef BD_SAME
+}
+
 static bool compose(u32 *xrgb)
 {
     if (!dirty) return false;
@@ -69,6 +115,7 @@ static bool compose(u32 *xrgb)
             }
         }
     }
+    apply_backdrop(xrgb);
     return true;
 }
 
