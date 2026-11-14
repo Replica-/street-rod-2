@@ -7,6 +7,7 @@
  * there (ega_set_page_mask). The start-light slide's state is put back between the two passes. */
 #include "game/race3d.h"
 
+#include <math.h>
 #include <string.h>
 
 #include "game/race_int.h"
@@ -28,7 +29,7 @@ static u8 saved[4][(VIEW_Y1 - VIEW_Y0 + 1) * EGA_BYTES_PER_LINE];
 bool race3d_on(void)
 {
     if (!r3d_active() || r3d_classic()) return false;
-    return MODE == 0 || MODE == 1 || MODE == 2 || MODE == 4 || MODE == 0x10;    /* Aqueduct (8): R1.7 */
+    return MODE == 0 || MODE == 1 || MODE == 2 || MODE == 4 || MODE == 8 || MODE == 0x10;
 }
 
 static u32 page_base(void) { return (u32)DSS(DS_back_page) * 0x2000u; }
@@ -147,7 +148,8 @@ static void opp_sprite(R3dSprite *o)
         if (ew[kind] <= 0) { ew[kind] = ww; eh[kind] = hh; }
         else { ew[kind] += (ww - ew[kind]) * 0.3f; eh[kind] += (hh - eh[kind]) * 0.3f; }
     }
-    if (ew[kind] <= 0 || !decode_pic(opp_pic(kind), &w, &h)) return;
+    /* the Aqueduct's pictures are the original's rotated bank variants (opp_sprite_aq): use the one it chose */
+    if (ew[kind] <= 0 || !decode_pic(MODE == 8 ? cur : opp_pic(kind), &w, &h)) return;
     r3d_sprite_upload(0, pic_px, w, h);
     o->vis = true;
     o->slot = 0;
@@ -352,10 +354,20 @@ static void tree_sprite(R3dSprite *o)
     o->w = o->h * (float)cw / (float)ch;
 }
 
+#define AQ_N 0x172                  /* Aqueduct flags 3726:4E62 */
+
 static void push_track(void)
 {
     static R3dTrack t;
+    bool aq = MODE == 8;
     for (int i = 0; i < R3D_TRACK_N; i++) {
+        if (aq) {                                          /* aq_project_front: straight, flat (heading only) */
+            t.yaw[i] = t.hgt[i] = 0;
+            t.l[i] = t.r[i] = 0;
+            t.c[i] = i < AQ_N ? TRKW(TRK_AQ, i) : 0;
+            t.bl[i] = t.br[i] = 0;
+            continue;
+        }
         t.yaw[i] = TRKS(TRK_YAW, geo(i));
         t.hgt[i] = drag() ? 0 : TRKS(TRK_HGT, i);
         t.l[i] = flag_l(i);
@@ -365,7 +377,23 @@ static void push_track(void)
         t.br[i] = bank_r(i);
     }
     t.wall_phase = drag() ? DSS(DS_rail_phase_seg) : -1;
+    t.aqueduct = aq;
     r3d_track_set(&t);
+}
+
+/* aq_project_front 18ec: the channel as the original projects it this frame (the deformation a094 set) */
+static void aq_view(R3dView *v)
+{
+    v->aq_fl = (float)(0x5C8 + DSS(DS_aq_def_xl));
+    v->aq_fr = (float)(0xCF8 + DSS(DS_aq_def_xr));
+    v->aq_tl = (float)(0x438 + DSS(DS_aq_def_top_xl));
+    v->aq_tr = (float)(0xE88 + DSS(DS_aq_def_top_xr));
+    v->aq_th = (float)(2000 - (0x67C + DSS(DS_aq_def_top_h)));
+    v->aq_floor = (float)-DSS(DS_aq_def_floor_h);
+    v->roll = atan2f((float)DSS(DS_rot_sin), (float)DSS(DS_rot_cos));
+    v->height = 0;
+    if (v->cam_x < 0x564) v->cam_x = 0x564;                /* road_proj_x's mode-8 clamp */
+    if (v->cam_x > 0xD5C) v->cam_x = 0xD5C;
 }
 
 static void push_view(void)
@@ -380,7 +408,9 @@ static void push_view(void)
     v.opp_pos = (float)DSS(DS_opp_seg) + (float)(DSS(DS_opp_seg_frac64) & 0x3F) / 64.0f;
     v.opp_lat = (float)DSS(DS_opp_lat);
     v.mode = MODE;
+    v.aq_fl = v.aq_fr = v.aq_tl = v.aq_tr = v.aq_th = v.aq_floor = v.roll = 0;
     if (drag()) v.height = 0;                              /* flat; the HGT pointer is not advanced there */
+    if (MODE == 8) aq_view(&v);
     push_scenery();
     opp_sprite(&v.opp);
     tree_sprite(&v.tree);

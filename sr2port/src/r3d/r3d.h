@@ -64,6 +64,9 @@ typedef struct {
     int mode;           /* road mode DS:ADD6 */
     R3dSprite opp;      /* the opponent's car (R1.4) */
     R3dSprite tree;     /* the drag strip's start lights (R1.6) */
+    /* Aqueduct (R1.7, aq_project_front 18ec): floor edges, wall-top edges (lateral), wall-top and floor height
+     * above the base road level, and the picture's roll (radians) */
+    float aq_fl, aq_fr, aq_tl, aq_tr, aq_th, aq_floor, roll;
 } R3dView;
 
 void r3d_view_push(const R3dView *v);
@@ -79,6 +82,7 @@ typedef struct {
     int16_t bl[R3D_TRACK_N];    /* left bank: > 0 hillside, < 0 drop-off (Mulholland) */
     int16_t br[R3D_TRACK_N];    /* right bank */
     int16_t wall_phase;         /* drag strip (R1.6): barrier walls, colour blocks of 5 from this segment; -1 = none */
+    int16_t aqueduct;           /* R1.7: a straight concrete channel; c[] = the Aqueduct flags (3726:4E62) */
 } R3dTrack;
 void r3d_track_set(const R3dTrack *t);
 /* True while the race code keeps pushing views (3D race view on screen). */

@@ -444,6 +444,35 @@ static void build(int first, int last, int mode)
     }
 }
 
+/* R1.7: the Aqueduct (mode 8) as aq_project_front 18ec projects it: a straight concrete channel, floor between
+ * aq_fl..aq_fr at aq_floor, walls up to the top edges aq_tl / aq_tr at aq_th, flat ground beyond. Flags per segment
+ * (race_render.md 1.6): 1 joint line, 2 no centre trough, 4 / 0x100 left wall opening, 8 / 0x200 right, 0x400 white
+ * floor band. */
+static void build_channel(int first, int last, const R3dView *v)
+{
+    nv = 0;
+    float fl = v->aq_fl, fr = v->aq_fr, tl = v->aq_tl, tr = v->aq_tr, th = v->aq_th, fh = v->aq_floor;
+    float mid = (fl + fr) * 0.5f;
+    for (int i = first; i < last; i++) {
+        float p0 = (float)i, p1 = (float)(i + 1);
+        unsigned f = trk.c[i];
+        bool alt = (i / 2) & 1;
+        float k = alt ? 0.70f : 0.66f;
+        if (f & 0x400) band(p0, p1, fl, fr, fh, fh, fh, fh, 0.93f, 0.93f, 0.90f);
+        else band(p0, p1, fl, fr, fh, fh, fh, fh, k, k * 0.97f, k * 0.90f);
+        if (!(f & 2)) band(p0, p1, mid - 0x28, mid + 0x28, fh + 2, fh + 2, fh + 2, fh + 2, 0.42f, 0.42f, 0.40f);
+        if (f & 1) band(p0, p0 + 0.06f, fl, fr, fh + 3, fh + 3, fh + 3, fh + 3, 0.30f, 0.30f, 0.28f);
+        float wk = alt ? 0.62f : 0.58f;
+        if (f & (4 | 0x100)) band(p0, p1, tl, fl, th, fh, th, fh, 0.16f, 0.15f, 0.14f);        /* opening */
+        else band(p0, p1, tl, fl, th, fh, th, fh, wk, wk * 0.96f, wk * 0.88f);
+        if (f & (8 | 0x200)) band(p0, p1, fr, tr, fh, th, fh, th, 0.16f, 0.15f, 0.14f);
+        else band(p0, p1, fr, tr, fh, th, fh, th, wk, wk * 0.96f, wk * 0.88f);
+        float gr = alt ? 0.50f : 0.46f;                    /* dry ground beyond the walls */
+        band(p0, p1, X_MID - FAR_X, tl, th, th, th, th, gr, gr * 0.92f, gr * 0.70f);
+        band(p0, p1, tr, X_MID + FAR_X, th, th, th, th, gr, gr * 0.92f, gr * 0.70f);
+    }
+}
+
 void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
 {
     (void)vw; (void)vh;
@@ -458,7 +487,8 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
     else { first = seg - 3; last = seg + DRAW_SEGS; }
     if (first < 0) first = 0;
     if (last > R3D_TRACK_N) last = R3D_TRACK_N;
-    build(first, last, v->mode);
+    if (trk.aqueduct) build_channel(first, last, v);
+    else build(first, last, v->mode);
 
     /* eye: the original's camera is 0x7D0 - cam_y above the road, offset by the car's own height deviation */
     float ex, ey, ez;
@@ -477,6 +507,11 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
         yaw += 3.14159265f;
     } else mat_projection(proj, 50.0f, 200000.0f);
     mat_view(view, ex, ey, ez, yaw);
+    if (v->roll != 0) {                                    /* R1.7: the Aqueduct's roll (0379 rot) */
+        float c = cosf(v->roll), s = sinf(v->roll);
+        float rz[16] = { c, s, 0, 0,   -s, c, 0, 0,   0, 0, 1, 0,   0, 0, 0, 1 };
+        mat_mul(view, rz, view);
+    }
     mat_mul(mvp, proj, view);
 
     gl.UseProgram(prog);
