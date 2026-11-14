@@ -23,10 +23,34 @@ sr2port.exe --game-dir Game speaker      (PC speaker instead of AdLib)
 sr2port.exe --game-dir Game              (VGA and AdLib; the original's video and sound menus are not shown)
 ```
 
+## Enhancements (work in progress)
+
+The game logic stays the original's. Enhancements sit on top, each behind a switch, with the original as the
+fallback (`--classic`):
+
+- **3D race view** (default): the races and town drives in 3D with smooth motion, the town's houses and
+  overhead signs, 4x anti-aliasing. `--classic` brings back the original 2D view; `--rain`, `--dusk` and
+  `--night` add weather and time of day.
+- **Smooth 2D animation**: the game's screen refresh follows the display (no judder on 60 / 120 Hz screens).
+- **Amiga graphics** (`--amiga`, WIP): the Amiga release's art in full colour: title, garage, gas station,
+  Burger's Bungalow, newspaper, engine screens, portraits, and the cars (Amiga bodies, customisation pieces
+  and turning wheels, repainted in the car's colour). The game draws its 16-colour screen as always; a
+  full-colour copy of the video memory is kept in step with every drawing step and shown instead. Pictures
+  without an Amiga version stay the PC ones (race dashboards, car underside, tyre-change tyres).
+  The art comes from **your own** Amiga disks: put the `.adf` files in `Game\`, extract them with
+  `python tools/unadf.py`, then run `python tools/amiga_export.py`. It writes one `gfx\` folder (every
+  picture by id, Amiga where there is one, else PC; cars, wheels) that the game reads; nothing is converted
+  while playing. `gfx\` is game art and is not in git.
+- Copy protection question skipped (`--protection` shows it).
+
+Known WIP: small PC pieces the game pastes onto Amiga backgrounds (garage lamp, floor papers), text boxes
+keeping the game's white behind their text, and the race graphics still being the PC ones.
+
 ## Layout
 
 ```text
-Game\        the installed DOS game (not in git)
+Game\        the installed DOS game, and your Amiga disks for --amiga (not in git)
+gfx\         the picture set for --amiga, made by tools\amiga_export.py (not in git)
 _tools\      junction to Ghidra + JDK (shared with the other ports, not in git)
 tools\       reverse-engineering scripts (Python, Ghidra)
 port\        RE guide, function indexes, SR1 matches, symbols, specs (port\spec), formats (port\formats)
