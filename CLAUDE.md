@@ -12,6 +12,7 @@ Rules:
 - **Game logic stays faithful.** Physics, opponents, timing and rules run exactly as in the faithful port; the 3D view
   only reads game state (plus interpolation between physics steps). New behaviour goes behind a switch with the
   original as fallback (`classic` switch = the faithful 2D race view).
+- Commit finished, tested work without asking (local commits only; ask before pushing, releasing or deleting).
 - Bugs in shared code are fixed in `../street-rod-2` first, then pulled here (`git pull faithful main`).
 - Specs are searched, never dumped: `port/spec/race_render.md` (renderer, track arrays §1.4), `race.md`, `FORMATS.md`.
 - Tools write to `work/`; print short summaries. Do not view images unless asked; the user checks visuals.
