@@ -151,14 +151,14 @@ void car_compose(FarPtr *frames, s16 model, s16 flags, s16 driver, u16 tyre_pics
     u16 P = (u16)(DS_MODEL_OVERLAYS + 10 * model);
     u16 L = (u16)(DS_MODEL_LAYOUT + 12 * model);
     frames[0] = pic_get(model_pic(model), 1);
-    amiga_car_body(frames[0], model);             /* ENHANCED: --amiga cars */
+    bool amiga = amiga_car_body(frames[0], model, flags);   /* ENHANCED: --amiga car, with its own pieces */
     DSW(DS_gascap_x) = DSB((u16)(L + 10));
     DSW(DS_gascap_y) = DSB((u16)(L + 11));
-    if (flags & 2) pic_blit_at(frames[0], DSS((u16)(P + 6)), 0, DSB((u16)(L + 7)));
-    if (flags & 1) pic_blit_at(frames[0], DSS((u16)(P + 8)), DSB((u16)(L + 8)), DSB((u16)(L + 9)));
+    if ((flags & 2) && !amiga) pic_blit_at(frames[0], DSS((u16)(P + 6)), 0, DSB((u16)(L + 7)));
+    if ((flags & 1) && !amiga) pic_blit_at(frames[0], DSS((u16)(P + 8)), DSB((u16)(L + 8)), DSB((u16)(L + 9)));
     s16 roof = 0;                                 /* [bp-8] */
     if (flags & 4) {
-        pic_blit_at(frames[0], DSS((u16)(P + 2)), DSB((u16)(L + 4)), 0);
+        if (!amiga) pic_blit_at(frames[0], DSS((u16)(P + 2)), DSB((u16)(L + 4)), 0);
         roof = roof_first_row();
     }
     if ((flags & 8) && model != 0x15)
@@ -171,8 +171,10 @@ void car_compose(FarPtr *frames, s16 model, s16 flags, s16 driver, u16 tyre_pics
     }
     for (s16 i = 1; i < n; i++)
         frames[i] = arena_bitmap_alloc((s16)(desc_w(frames[0]) + 8), (s16)desc_h(frames[0]), 1, 1);
-    for (s16 i = 1; i < n; i++)                   /* VGA: each frame 2 px right of the previous */
+    for (s16 i = 1; i < n; i++) {                 /* VGA: each frame 2 px right of the previous */
         bitmap_make_shifted(frames[i - 1], 2, frames[i]);
+        amiga_car_shifted(frames[i], frames[0], 2 * i);          /* ENHANCED */
+    }
     if (tyre_pics != 0) {
         for (s16 i = 0; i < n; i++) {
             FarPtr w = pic_get(DSS((u16)(tyre_pics + 2 * i)), 2);
@@ -271,6 +273,7 @@ void car_draw(s16 mode, s16 model, s16 flags, s16 driver, s16 y, u16 tyre_pics)
                 ega_latch_copy_to40(ds_far(DS_car_tails), (s16)desc_stride(frames[0]), (s16)(desc_h(frames[0]) - DSS(YOFF)), d,
                                     (s16)desc_stride(frames[0]));
                 amiga_car_shown(frames[0], g_back(), x & ~7, (s16)(y - h + 1), 0, (s16)(desc_h(frames[0]) - DSS(YOFF)));   /* ENHANCED */
+                amiga_car_shown(frames[0], g_front(), x & ~7, (s16)(y - h + 1), 0, (s16)(desc_h(frames[0]) - DSS(YOFF)));
                 present_back_page();
                 break;
             }
@@ -280,6 +283,7 @@ void car_draw(s16 mode, s16 model, s16 flags, s16 driver, s16 y, u16 tyre_pics)
                 ega_latch_copy_to40(ds_far(DS_car_tails), (s16)desc_stride(frames[0]), (s16)(h - DSS(YOFF)), d,
                                     (s16)desc_stride(frames[0]));
                 amiga_car_shown(frames[0], g_front(), x & ~7, (s16)(y - h + 1), 0, (s16)(h - DSS(YOFF)));   /* ENHANCED */
+                amiga_car_shown(frames[0], g_back(), x & ~7, (s16)(y - h + 1), 0, (s16)(h - DSS(YOFF)));
                 page_copy_rect(g_front(), g_back(), x, (s16)(y - h + 1), (s16)(x + w - 1), y);
                 break;
             }

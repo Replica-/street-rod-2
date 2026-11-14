@@ -28,7 +28,9 @@ void ega_set_page_mask(int page, const u8 *mask);   /* ENHANCED: 320x200 see-thr
 /* ENHANCED (--amiga, see ega.c): full-colour pictures where the screen still shows the game's picture. Regions at
  * column x, row y of page `page` (plane offset / 2000h); add takes ownership of ref / rgb (malloc'd, ref 0xFF = not
  * part of the picture). */
-void ega_add_backdrop(u8 *ref, u32 *rgb, int page, int x, int y, int w, int h);
+#define BD_STRICT 1                 /* a pixel counts only if its 4 neighbours still match too */
+#define BD_CAR 2                    /* a car: replaces the earlier car region of the page */
+void ega_add_backdrop(u8 *ref, u32 *rgb, int page, int x, int y, int w, int h, int flags);
 void ega_copy_backdrops(int spage, int sx, int sy, int w, int h, int dpage, int dx, int dy);
 void ega_drop_backdrops(int page, int x, int y, int w, int h);
 

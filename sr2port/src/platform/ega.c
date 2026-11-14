@@ -50,8 +50,8 @@ void ega_set_page_mask(int page, const u8 *mask)
  * storage into the view, back page -> front page), any blit drops the regions it covers. The composer shows the
  * replacement where the screen still shows the reference pixel (and its 4 neighbours do too, so things drawn on top in
  * the picture's own colour stay the game's), only while most of the visible region matches. Newest last (on top). */
-#define BD_MAX 64
-static struct { u8 *ref; u32 *rgb; int page, x, y, w, h; } bd[BD_MAX];
+#define BD_MAX 128
+static struct { u8 *ref; u32 *rgb; int page, x, y, w, h; bool strict, car; } bd[BD_MAX];   /* strict: 4-neighbour rule */
 static int bd_n;
 
 static void bd_free(int i) { free(bd[i].ref); free(bd[i].rgb); }
@@ -69,26 +69,36 @@ void ega_drop_backdrops(int page, int x, int y, int w, int h)
     bd_n = k;
 }
 
-void ega_add_backdrop(u8 *ref, u32 *rgb, int page, int x, int y, int w, int h)
+void ega_add_backdrop(u8 *ref, u32 *rgb, int page, int x, int y, int w, int h, int flags)
 {
+    bool strict = flags & BD_STRICT;
     if (!ref || !rgb || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > 320 || page < 0 || page > 7) {
         free(ref); free(rgb); return;
     }
     ega_drop_backdrops(page, x, y, w, h);
+    if (flags & BD_CAR) {                                       /* one car per page: its earlier positions go */
+        int k = 0;
+        for (int i = 0; i < bd_n; i++) {
+            if (bd[i].page == page && bd[i].car) bd_free(i);
+            else bd[k++] = bd[i];
+        }
+        bd_n = k;
+    }
     if (bd_n == BD_MAX) {                                       /* the oldest goes */
         bd_free(0);
         memmove(bd, bd + 1, (BD_MAX - 1) * sizeof bd[0]);
         bd_n--;
     }
     bd[bd_n].ref = ref; bd[bd_n].rgb = rgb; bd[bd_n].page = page;
-    bd[bd_n].x = x; bd[bd_n].y = y; bd[bd_n].w = w; bd[bd_n].h = h;
+    bd[bd_n].x = x; bd[bd_n].y = y; bd[bd_n].w = w; bd[bd_n].h = h; bd[bd_n].strict = strict;
+    bd[bd_n].car = (flags & BD_CAR) != 0;
     bd_n++;
     dirty = true;
 }
 
 void ega_copy_backdrops(int spage, int sx, int sy, int w, int h, int dpage, int dx, int dy)
 {
-    struct { u8 *ref; u32 *rgb; int x, y, w, h; } add[BD_MAX];
+    struct { u8 *ref; u32 *rgb; int x, y, w, h, flags; } add[BD_MAX];
     int na = 0;
     for (int i = 0; i < bd_n && na < BD_MAX; i++) {             /* the parts of src regions inside the copied rect */
         if (bd[i].page != spage) continue;
@@ -106,10 +116,11 @@ void ega_copy_backdrops(int spage, int sx, int sy, int w, int h, int dpage, int 
             memcpy(c + yy * cw, bd[i].rgb + o, (size_t)cw * sizeof(u32));
         }
         add[na].ref = r; add[na].rgb = c; add[na].x = dx + (x0 - sx); add[na].y = dy + (y0 - sy);
-        add[na].w = cw; add[na].h = ch; na++;
+        add[na].w = cw; add[na].h = ch; add[na].flags = (bd[i].strict ? BD_STRICT : 0); na++;
     }
     ega_drop_backdrops(dpage, dx, dy, w, h);                    /* overwritten */
-    for (int a = 0; a < na; a++) ega_add_backdrop(add[a].ref, add[a].rgb, dpage, add[a].x, add[a].y, add[a].w, add[a].h);
+    for (int a = 0; a < na; a++)
+        ega_add_backdrop(add[a].ref, add[a].rgb, dpage, add[a].x, add[a].y, add[a].w, add[a].h, add[a].flags);
 }
 
 static void apply_backdrops(u32 *xrgb)
@@ -153,10 +164,12 @@ static void apply_backdrops(u32 *xrgb)
                 if (q == 0xFE) { xrgb[y * 320 + sx] = bd[r].rgb[ry * W + x]; continue; }    /* always (overhang) */
                 if (q == 0xFF || idx[y * 320 + sx] != q) continue;
                 bool ok = true;                                 /* the 4 neighbours (screen) still the picture */
+                if (bd[r].strict) {
                 if (x > 0 && bd[r].ref[ry * W + x - 1] < 0xFE && idx[y * 320 + sx - 1] != bd[r].ref[ry * W + x - 1]) ok = false;
                 if (x + 1 < W && bd[r].ref[ry * W + x + 1] < 0xFE && idx[y * 320 + sx + 1] != bd[r].ref[ry * W + x + 1]) ok = false;
                 if (ryu == ry - 1 && ryu >= 0 && bd[r].ref[ryu * W + x] < 0xFE && idx[(y - 1) * 320 + sx] != bd[r].ref[ryu * W + x]) ok = false;
                 if (ryd == ry + 1 && ryd < bd[r].h && bd[r].ref[ryd * W + x] < 0xFE && idx[(y + 1) * 320 + sx] != bd[r].ref[ryd * W + x]) ok = false;
+                }
                 if (ok) xrgb[y * 320 + sx] = bd[r].rgb[ry * W + x];
             }
         }

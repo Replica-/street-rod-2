@@ -791,6 +791,7 @@ s16 ega_anim_step(u16 a)
         r.sx = 0;
         r.dx = DSS(a + 0x0C);
         ega_sprite_over_bg(ds_far(ref), ds_far(n), bg, tail_at(DSW(ref + 4), &tl), &r);
+        amiga_on_sprite(ds_far(ref), ds_far(n), &r);              /* ENHANCED: --amiga car in motion */
     }
     u16 op = DSW(a + 0x0A);                       /* the overlay redrawn over the sprite */
     if (op != 0) {
