@@ -11,6 +11,7 @@
 #include "platform/video.h"
 #include "platform/vga.h"
 #include "modules.h"
+#include "enh/amiga.h"
 
 #include <string.h>
 
@@ -277,6 +278,7 @@ FarPtr pic_get(s16 id, s16 pool)
     pic_info(id, &w, &h, &m);
     FarPtr b = arena_bitmap_alloc(w, h, m, pool);
     pic_decode(id, b);
+    amiga_note_pic(b, id);                        /* ENHANCED: --amiga */
     return b;
 }
 

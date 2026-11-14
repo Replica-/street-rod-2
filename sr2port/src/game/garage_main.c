@@ -1,7 +1,6 @@
 /* The garage screen (S5.2 / W2b): hot spots 0001:6796 / 67b8, garage_name_clear 68c0, garage_screen 6912.
  * From port/spec/garage.md, checked against the disassembly (work/SR2_unp.exe). SR1 base: srport garage_main.c. */
 #include "game/ds_screens.h"
-#include "enh/amiga.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -100,7 +99,6 @@ s16 garage_screen(s16 mode)
             FarPtr p = pic_get(0x3FA, 2);
             pic_draw_masked(p, 0x3FC, 0x90, 0xA3, 0);
             pic_draw_masked(p, 0x4AE, 0x50, 0xAC, 0);
-            amiga_garage_backdrop(p);              /* ENHANCED: --amiga garage */
             screen_put_bitmap_mirror(p, 0, 0);
             arena_pop(1);
             pal_load(DS_GS_PAL_GARAGE);

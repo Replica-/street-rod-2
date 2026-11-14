@@ -14,7 +14,7 @@
             "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe"
         },
         {
-            "name": "Run 3D + Amiga garage",
+            "name": "Run 3D + Amiga graphics",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/sr2port/build/sr2port.exe",

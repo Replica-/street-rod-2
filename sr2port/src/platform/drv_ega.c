@@ -15,6 +15,7 @@
 
 #include "codeptr.h"
 #include "host.h"
+#include "enh/amiga.h"
 #include "modules.h"
 #include "platform/platform.h"
 #include "platform/vga.h"
@@ -46,9 +47,19 @@ typedef void (*FnHspan)(s16, s16, s16);
 typedef void (*FnFillRows)(s16, s16);
 typedef void (*FnSetColour)(s16);
 
-u16  drv_blit(FarPtr src, FarPtr dst, const Rect *r, u8 flags) { return ((FnBlit)drv_slot(0))(src, dst, r, flags); }
+u16  drv_blit(FarPtr src, FarPtr dst, const Rect *r, u8 flags)
+{
+    u16 v = ((FnBlit)drv_slot(0))(src, dst, r, flags);
+    amiga_on_blit(src, dst, r, false);            /* ENHANCED: --amiga */
+    return v;
+}
 void drv_blit_shifted(FarPtr src, FarPtr dst, const Rect *r) { ((FnBlitShifted)drv_slot(1))(src, dst, r); }
-s16  drv_blit_masked(FarPtr src, FarPtr dst, const Rect *r, s16 mode) { return ((FnBlitMasked)drv_slot(2))(src, dst, r, mode); }
+s16  drv_blit_masked(FarPtr src, FarPtr dst, const Rect *r, s16 mode)
+{
+    s16 v = ((FnBlitMasked)drv_slot(2))(src, dst, r, mode);
+    amiga_on_blit(src, dst, r, true);             /* ENHANCED: --amiga */
+    return v;
+}
 void drv_draw_text(FarPtr d, s16 x, s16 y, const char *s)
 {
     static int trace = -1;
