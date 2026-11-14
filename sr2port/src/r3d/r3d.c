@@ -271,7 +271,12 @@ void r3d_present(const uint32_t *frame, int fw, int fh)
         if (SDL_getenv("SR_R3D_TRACE"))                         /* developer aid: the blended view per frame */
             fprintf(stderr, "r3d %.4f pos %.4f x %.1f hd %.1f\n", (double)SDL_GetTicksNS() / 1e9, (double)v.pos,
                     (double)v.cam_x, (double)v.heading);
-        r3d_scene_draw(&v, w, y1 - y0);
+        r3d_scene_draw(&v, w, y1 - y0, false);
+        /* R1.5: the rear-view mirror's glass, (243,22)-(317,42) of the frame */
+        int mx0 = w * 243 / 320, mx1 = w * 318 / 320, my0 = h * 22 / 200, my1 = h * 43 / 200;
+        gl.Viewport(mx0, h - my1, mx1 - mx0, my1 - my0);
+        gl.Scissor(mx0, h - my1, mx1 - mx0, my1 - my0);
+        r3d_scene_draw(&v, mx1 - mx0, my1 - my0, true);
         gl.Disable(GL_DEPTH_TEST);
         gl.Disable(GL_SCISSOR_TEST);
         gl.Viewport(0, 0, w, h);

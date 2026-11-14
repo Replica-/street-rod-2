@@ -7,6 +7,6 @@
 bool r3d_scene_init(void);
 void r3d_scene_shutdown(void);
 /* v = the interpolated view; vw, vh = viewport size in pixels. */
-void r3d_scene_draw(const R3dView *v, int vw, int vh);
+void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror);
 
 #endif

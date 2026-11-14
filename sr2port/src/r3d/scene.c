@@ -435,7 +435,7 @@ static void build(int first, int last, int mode)
     }
 }
 
-void r3d_scene_draw(const R3dView *v, int vw, int vh)
+void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
 {
     (void)vw; (void)vh;
     const float sky[3] = { 0.36f, 0.56f, 0.86f }, haze[3] = { 0.70f, 0.80f, 0.92f };
@@ -444,7 +444,11 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh)
     if (!have_trk) return;
 
     int seg = (int)floorf(v->pos);
-    int first = seg - 3 < 0 ? 0 : seg - 3, last = seg + DRAW_SEGS > R3D_TRACK_N ? R3D_TRACK_N : seg + DRAW_SEGS;
+    int first, last;
+    if (mirror) { first = seg - DRAW_SEGS / 2; last = seg + 3; }      /* R1.5: what lies behind */
+    else { first = seg - 3; last = seg + DRAW_SEGS; }
+    if (first < 0) first = 0;
+    if (last > R3D_TRACK_N) last = R3D_TRACK_N;
     build(first, last, v->mode);
 
     /* eye: the original's camera is 0x7D0 - cam_y above the road, offset by the car's own height deviation */
@@ -452,9 +456,18 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh)
     int si = seg < 0 ? 0 : (seg >= R3D_TRACK_N ? R3D_TRACK_N - 1 : seg);
     float above = (0x7D0 - v->cam_y) + (v->height - trk.hgt[si]) * HGT_UNIT;
     track_point(v->pos, v->cam_x, above, &ex, &ey, &ez);
+    float yaw = v->heading * YAW_RAD;
     float proj[16], view[16], mvp[16];
-    mat_projection(proj, 50.0f, 200000.0f);
-    mat_view(view, ex, ey, ez, v->heading * YAW_RAD);
+    if (mirror) {
+        /* R1.5: the original's mirror projects with a quarter of the front focal length (road_proj_x_mirror: no x4),
+         * centred on x 280, horizon at row 36 of the glass rows 22..42; looking back, flipped left-right */
+        mat_projection(proj, 50.0f, 200000.0f);
+        proj[0] = -(FOCAL / 4.0f) / 37.5f;
+        proj[5] = (FOCAL / 4.0f) / 10.5f;
+        proj[9] = 0.38f;
+        yaw += 3.14159265f;
+    } else mat_projection(proj, 50.0f, 200000.0f);
+    mat_view(view, ex, ey, ez, yaw);
     mat_mul(mvp, proj, view);
 
     gl.UseProgram(prog);
@@ -468,6 +481,6 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh)
     gl.BindVertexArray(0);
 
     const float eye[3] = { ex, ey, ez };
-    scenery_draw(first, last, v->heading * YAW_RAD, mvp, eye, haze);
-    sprite_draw(&v->opp, v->heading * YAW_RAD, mvp, eye, haze);
+    scenery_draw(first, last, yaw, mvp, eye, haze);
+    sprite_draw(&v->opp, yaw, mvp, eye, haze);
 }

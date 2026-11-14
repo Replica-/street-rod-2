@@ -17,8 +17,10 @@
 
 #define VIEW_Y0 18                  /* race view rows (race_render.md 1.3) */
 #define VIEW_Y1 101
-#define MIRROR_Y1 44                /* the mirror box: x 240..319 (byte 30 on), rows 18..44 */
+#define MIRROR_Y0 20                /* the mirror box (mirror_draw_backdrop): x 240..319 (byte 30 on), rows 20..44, */
+#define MIRROR_Y1 44                /* and its stem x 272..287 (bytes 34, 35) in rows 18, 19 */
 #define MIRROR_B0 30
+#define MIRROR_STEM_B0 34
 
 static u8 masks[3][320 * 200];
 static u8 saved[4][(VIEW_Y1 - VIEW_Y0 + 1) * EGA_BYTES_PER_LINE];
@@ -31,14 +33,27 @@ bool race3d_on(void)
 
 static u32 page_base(void) { return (u32)DSS(DS_back_page) * 0x2000u; }
 
+#define GLASS_X0 243                /* R1.5: the mirror glass inside its frame */
+#define GLASS_X1 317
+#define GLASS_Y0 22
+#define GLASS_Y1 42
+
 static void fill_view(int colour)
 {
     u32 base = page_base();
     for (int p = 0; p < 4; p++) {
         u8 v = (colour >> p & 1) ? 0xFF : 0x00, *pl = ega_plane(p);
         for (int y = VIEW_Y0; y <= VIEW_Y1; y++) {
-            int bn = y <= MIRROR_Y1 ? MIRROR_B0 : EGA_BYTES_PER_LINE;
-            memset(pl + ((base + (u32)y * EGA_BYTES_PER_LINE) & 0xFFFF), v, (size_t)bn);
+            u8 *row = pl + ((base + (u32)y * EGA_BYTES_PER_LINE) & 0xFFFF);
+            if (y < MIRROR_Y0) {                                 /* above the box only the stem x 272..287 */
+                memset(row, v, MIRROR_STEM_B0);
+                memset(row + MIRROR_STEM_B0 + 2, v, EGA_BYTES_PER_LINE - MIRROR_STEM_B0 - 2);
+            } else memset(row, v, (size_t)(y <= MIRROR_Y1 ? MIRROR_B0 : EGA_BYTES_PER_LINE));
+            if (y >= GLASS_Y0 && y <= GLASS_Y1)                  /* the glass, pixel by pixel (frame kept) */
+                for (int x = GLASS_X0; x <= GLASS_X1; x++) {
+                    u8 bit = (u8)(0x80 >> (x & 7));
+                    row[x >> 3] = (u8)((row[x >> 3] & ~bit) | (v & bit));
+                }
         }
     }
 }
@@ -117,16 +132,17 @@ static void opp_sprite(R3dSprite *o)
     memset(o, 0, sizeof *o);
     if (!DSB(DS_racing) || MODE == 2) return;
     s16 s = DSS(DS_opp_sprite), d = DSS(DS_opp_last_d);
-    if (s < 0 || s > 8) return;                            /* behind (mirror only) or not chosen */
-    int kind = (s == 0 || s == 1 || s == 3) ? s : 2;
+    if (s < 0 || s > 12) return;                           /* not chosen */
+    int kind = (s == 0 || s == 1 || s == 3) ? s : s >= 9 ? 9 : 2;    /* 9..12: front views, behind us (mirror) */
     int w, h;
     FarPtr cur = ds_far(DS_opp_pic);
     if (desc_w(cur) > 0) {
         int z = d / 8;
         if (s == 0) z += 0x10;
         if (z < -2 && s == 2) z += 8;
-        z = (z < 0 ? -z : z) + 4;
-        float sc = (float)z / 4.0f;                        /* world units per frame pixel at that depth */
+        float sc;                                          /* world units per frame pixel at that depth */
+        if (s >= 9) sc = (float)(z < 0 ? -z : z);          /* road_proj_x_mirror: no x4 */
+        else sc = (float)((z < 0 ? -z : z) + 4) / 4.0f;
         float ww = desc_w(cur) * sc, hh = desc_h(cur) * sc;
         if (ew[kind] <= 0) { ew[kind] = ww; eh[kind] = hh; }
         else { ew[kind] += (ww - ew[kind]) * 0.3f; eh[kind] += (hh - eh[kind]) * 0.3f; }
