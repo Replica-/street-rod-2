@@ -306,10 +306,6 @@ void car_draw(s16 mode, s16 model, s16 flags, s16 driver, s16 y, u16 tyre_pics)
             DSW(DS_anim_player) = 0;
             memcpy(mp(DGROUP, DS_car_dirty), mp(DGROUP, (u16)(DSW((u16)(anim + 0x12)) + 4)), 8);
         }
-        if (mode == 4 || mode == 6) {             /* ENHANCED: the car has come to rest at (x, y - h + 1) */
-            amiga_car_shown(frames[0], g_front(), x & ~7, (s16)(y - h + 1), 0, (s16)(h - DSS(YOFF)));
-            amiga_car_shown(frames[0], g_back(), x & ~7, (s16)(y - h + 1), 0, (s16)(h - DSS(YOFF)));
-        }
         if (LOC == 3 && mode == 4) {              /* gas station: the pump bitmaps over the car view */
             for (s16 i = 0; i < 2; i++) {
                 s16 pw = DSS((u16)(DS_PUMP_FRAME_W + 2 * i));

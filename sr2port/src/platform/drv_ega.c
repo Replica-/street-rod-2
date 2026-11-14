@@ -16,6 +16,7 @@
 #include "codeptr.h"
 #include "host.h"
 #include "enh/amiga.h"
+#include "platform/ega.h"
 #include "modules.h"
 #include "platform/platform.h"
 #include "platform/vga.h"
@@ -749,6 +750,11 @@ s16 ega_anim_step(u16 a)
     if (DSS(DSW(a + 0x10)) < 0) {                 /* finished: copy the last page into the next one */
         u16 n = DSW(a + 0x12);
         ega_latch_copy(desc_planes(ds_far(n)), desc_planes(ds_far(DSW(n + 0x0E))), 0x28, 0xBE, 0, 0, 0x28);
+        {                                                         /* ENHANCED: --amiga, the regions go along */
+            FarPtr sp = desc_planes(ds_far(n)), dp = desc_planes(ds_far(DSW(n + 0x0E)));
+            ega_copy_backdrops((int)(((u32)(sp.seg - 0xA000) * 16u + sp.off) / 0x2000), 0, 0, 320, 0xBE,
+                               (int)(((u32)(dp.seg - 0xA000) * 16u + dp.off) / 0x2000), 0, 0);
+        }
         if (DSW(n + 0x0C) != 0) {
             u16 n2 = DSW(n + 0x0E), n3 = DSW(n2 + 0x0E);
             for (u16 i = 0; i < 8; i += 2) DSW(n2 + 4 + i) = DSW(n3 + 4 + i);

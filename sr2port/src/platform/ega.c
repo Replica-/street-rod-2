@@ -76,7 +76,7 @@ void ega_add_backdrop(u8 *ref, u32 *rgb, int page, int x, int y, int w, int h, i
         free(ref); free(rgb); return;
     }
     ega_drop_backdrops(page, x, y, w, h);
-    if (flags & BD_CAR) {                                       /* one car per page: its earlier positions go */
+    if ((flags & BD_CAR) && !(flags & BD_COPY)) {               /* a car drawn: its earlier positions go */
         int k = 0;
         for (int i = 0; i < bd_n; i++) {
             if (bd[i].page == page && bd[i].car) bd_free(i);
@@ -116,7 +116,7 @@ void ega_copy_backdrops(int spage, int sx, int sy, int w, int h, int dpage, int 
             memcpy(c + yy * cw, bd[i].rgb + o, (size_t)cw * sizeof(u32));
         }
         add[na].ref = r; add[na].rgb = c; add[na].x = dx + (x0 - sx); add[na].y = dy + (y0 - sy);
-        add[na].w = cw; add[na].h = ch; add[na].flags = (bd[i].strict ? BD_STRICT : 0); na++;
+        add[na].w = cw; add[na].h = ch; add[na].flags = (bd[i].strict ? BD_STRICT : 0) | (bd[i].car ? BD_CAR : 0) | BD_COPY; na++;
     }
     ega_drop_backdrops(dpage, dx, dy, w, h);                    /* overwritten */
     for (int a = 0; a < na; a++)

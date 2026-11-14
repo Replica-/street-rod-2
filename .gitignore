@@ -25,3 +25,6 @@ __pycache__/
 
 # Local HTML view of PLAN.md (python tools/plan_site.py)
 /site/
+
+# Amiga graphics converted by tools/amiga_export.py (game data, never committed)
+gfx/

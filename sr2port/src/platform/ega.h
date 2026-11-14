@@ -30,6 +30,7 @@ void ega_set_page_mask(int page, const u8 *mask);   /* ENHANCED: 320x200 see-thr
  * part of the picture). */
 #define BD_STRICT 1                 /* a pixel counts only if its 4 neighbours still match too */
 #define BD_CAR 2                    /* a car: replaces the earlier car region of the page */
+#define BD_COPY 4                   /* carried along by a page-to-page copy: replaces nothing */
 void ega_add_backdrop(u8 *ref, u32 *rgb, int page, int x, int y, int w, int h, int flags);
 void ega_copy_backdrops(int spage, int sx, int sy, int w, int h, int dpage, int dx, int dy);
 void ega_drop_backdrops(int page, int x, int y, int w, int h);

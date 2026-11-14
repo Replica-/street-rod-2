@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Packages the Windows release of Street Rod 2 (sr2port.exe + "Street Rod 2.exe" + the DLLs they need).
 
-    python sr2port/tools/package_release.py [--build sr2port/build-release]
+    python sr2port/tools/package_release.py [--build sr2port/build-release] [--with-amiga-gfx]
 
 Writes  release/sr2port-v<version>-win64.zip, release/SHA256SUMS.txt  and the folder it zips,
 release/sr2port-v<version>-win64/ (git-ignored). Adapted from the Street Rod (SR1) port's release
@@ -9,6 +9,9 @@ folder (../StreetRod/release). The game's data is never packaged: the zip is che
 
 Needs MSYS2 mingw64 (objdump, the DLLs) and a Release build of sr2port with the launcher
 (-DSR2_LAUNCHER=ON). Run it from any shell; it uses the paths below only.
+
+--with-amiga-gfx: a private package with gfx/amiga (made by tools/amiga_export.py from your Amiga disks) next to the
+executables, for --amiga. That folder is game art: the zip is named ...-amiga-private and must not be published.
 """
 import argparse
 import hashlib
@@ -83,10 +86,11 @@ def closure(build_dir):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--build", default=os.path.join(PORT, "build-release"))
+    ap.add_argument("--with-amiga-gfx", action="store_true")
     args = ap.parse_args()
     build = os.path.abspath(args.build)
     version = read_version()
-    name = "sr2port-v%s-win64" % version
+    name = "sr2port-v%s-win64%s" % (version, "-amiga-private" if args.with_amiga_gfx else "")
     stage = os.path.join(RELEASE, name)
     zip_path = os.path.join(RELEASE, name + ".zip")
 
@@ -119,6 +123,13 @@ def main():
     for _, dst in files:
         if FORBIDDEN.search(dst):
             sys.exit("package: game data would be packaged: " + dst)
+    if args.with_amiga_gfx:                       # private package only (see above)
+        gfx = os.path.join(REPO, "gfx", "amiga")
+        if not os.path.isfile(os.path.join(gfx, "cars.txt")):
+            sys.exit("package: gfx/amiga missing (python tools/amiga_export.py)")
+        for f in sorted(os.listdir(gfx)):
+            files.append((os.path.join(gfx, f), "gfx/amiga/" + f))
+        print("package: PRIVATE package with the Amiga game art - do not publish")
 
     for src, dst in files:
         target = os.path.join(stage, dst.replace("/", os.sep))
