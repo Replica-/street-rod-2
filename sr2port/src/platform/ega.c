@@ -137,7 +137,7 @@ static void apply_backdrops(u32 *xrgb)
             if (ry < 0 || ry >= bd[r].h) continue;
             for (int x = 0; x < W; x++) {
                 u8 q = bd[r].ref[ry * W + x];
-                if (q == 0xFF) continue;
+                if (q >= 0xFE) continue;
                 seen++;
                 same += idx[y * 320 + bd[r].x + x] == q;
             }
@@ -150,12 +150,13 @@ static void apply_backdrops(u32 *xrgb)
             for (int x = 0; x < W; x++) {
                 int sx = bd[r].x + x;
                 u8 q = bd[r].ref[ry * W + x];
+                if (q == 0xFE) { xrgb[y * 320 + sx] = bd[r].rgb[ry * W + x]; continue; }    /* always (overhang) */
                 if (q == 0xFF || idx[y * 320 + sx] != q) continue;
                 bool ok = true;                                 /* the 4 neighbours (screen) still the picture */
-                if (x > 0 && bd[r].ref[ry * W + x - 1] != 0xFF && idx[y * 320 + sx - 1] != bd[r].ref[ry * W + x - 1]) ok = false;
-                if (x + 1 < W && bd[r].ref[ry * W + x + 1] != 0xFF && idx[y * 320 + sx + 1] != bd[r].ref[ry * W + x + 1]) ok = false;
-                if (ryu == ry - 1 && ryu >= 0 && bd[r].ref[ryu * W + x] != 0xFF && idx[(y - 1) * 320 + sx] != bd[r].ref[ryu * W + x]) ok = false;
-                if (ryd == ry + 1 && ryd < bd[r].h && bd[r].ref[ryd * W + x] != 0xFF && idx[(y + 1) * 320 + sx] != bd[r].ref[ryd * W + x]) ok = false;
+                if (x > 0 && bd[r].ref[ry * W + x - 1] < 0xFE && idx[y * 320 + sx - 1] != bd[r].ref[ry * W + x - 1]) ok = false;
+                if (x + 1 < W && bd[r].ref[ry * W + x + 1] < 0xFE && idx[y * 320 + sx + 1] != bd[r].ref[ry * W + x + 1]) ok = false;
+                if (ryu == ry - 1 && ryu >= 0 && bd[r].ref[ryu * W + x] < 0xFE && idx[(y - 1) * 320 + sx] != bd[r].ref[ryu * W + x]) ok = false;
+                if (ryd == ry + 1 && ryd < bd[r].h && bd[r].ref[ryd * W + x] < 0xFE && idx[(y + 1) * 320 + sx] != bd[r].ref[ryd * W + x]) ok = false;
                 if (ok) xrgb[y * 320 + sx] = bd[r].rgb[ry * W + x];
             }
         }

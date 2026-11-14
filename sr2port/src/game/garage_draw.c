@@ -6,6 +6,7 @@
  * builder) are not ported - PORT, like the rest of the port (PORTING.md rule 7). The data layouts of the animation
  * records (Anim DS:A544, SpriteRef DS:9D1A, FrameRec DS:9B16, PageNode DS:A5FC) are described in platform/anim_rect.c. */
 #include "game/garage_draw.h"
+#include "enh/amiga.h"
 
 #include <string.h>
 
@@ -150,6 +151,7 @@ void car_compose(FarPtr *frames, s16 model, s16 flags, s16 driver, u16 tyre_pics
     u16 P = (u16)(DS_MODEL_OVERLAYS + 10 * model);
     u16 L = (u16)(DS_MODEL_LAYOUT + 12 * model);
     frames[0] = pic_get(model_pic(model), 1);
+    amiga_car_body(frames[0], model);             /* ENHANCED: --amiga cars */
     DSW(DS_gascap_x) = DSB((u16)(L + 10));
     DSW(DS_gascap_y) = DSB((u16)(L + 11));
     if (flags & 2) pic_blit_at(frames[0], DSS((u16)(P + 6)), 0, DSB((u16)(L + 7)));
@@ -268,6 +270,7 @@ void car_draw(s16 mode, s16 model, s16 flags, s16 driver, s16 y, u16 tyre_pics)
                 d.off = (u16)((u16)((y - h) * 0x28) + (u16)(x >> 3) + d.off + 0x28);
                 ega_latch_copy_to40(ds_far(DS_car_tails), (s16)desc_stride(frames[0]), (s16)(desc_h(frames[0]) - DSS(YOFF)), d,
                                     (s16)desc_stride(frames[0]));
+                amiga_car_shown(frames[0], g_back(), x & ~7, (s16)(y - h + 1), 0, (s16)(desc_h(frames[0]) - DSS(YOFF)));   /* ENHANCED */
                 present_back_page();
                 break;
             }
@@ -276,6 +279,7 @@ void car_draw(s16 mode, s16 model, s16 flags, s16 driver, s16 y, u16 tyre_pics)
                 d.off = (u16)((u16)((y - h) * 0x28) + (u16)(x >> 3) + d.off + 0x28);
                 ega_latch_copy_to40(ds_far(DS_car_tails), (s16)desc_stride(frames[0]), (s16)(h - DSS(YOFF)), d,
                                     (s16)desc_stride(frames[0]));
+                amiga_car_shown(frames[0], g_front(), x & ~7, (s16)(y - h + 1), 0, (s16)(h - DSS(YOFF)));   /* ENHANCED */
                 page_copy_rect(g_front(), g_back(), x, (s16)(y - h + 1), (s16)(x + w - 1), y);
                 break;
             }
@@ -297,6 +301,10 @@ void car_draw(s16 mode, s16 model, s16 flags, s16 driver, s16 y, u16 tyre_pics)
             DSW(DS_car_running) = 0;
             DSW(DS_anim_player) = 0;
             memcpy(mp(DGROUP, DS_car_dirty), mp(DGROUP, (u16)(DSW((u16)(anim + 0x12)) + 4)), 8);
+        }
+        if (mode == 4 || mode == 6) {             /* ENHANCED: the car has come to rest at (x, y - h + 1) */
+            amiga_car_shown(frames[0], g_front(), x & ~7, (s16)(y - h + 1), 0, (s16)(h - DSS(YOFF)));
+            amiga_car_shown(frames[0], g_back(), x & ~7, (s16)(y - h + 1), 0, (s16)(h - DSS(YOFF)));
         }
         if (LOC == 3 && mode == 4) {              /* gas station: the pump bitmaps over the car view */
             for (s16 i = 0; i < 2; i++) {
