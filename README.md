@@ -19,8 +19,8 @@ the launcher, **`Street Rod 2.exe`** (built beside `sr2port.exe` when wxWidgets 
 graphics, sound AdLib / Normal, the game's switches, window size, full screen), or run the port directly:
 
 ```text
-sr2port.exe --game-dir Game v adlib      (v = VGA, adlib or speaker = sound; no menus)
-sr2port.exe --game-dir Game              (the original's text menus for video and sound)
+sr2port.exe --game-dir Game speaker      (PC speaker instead of AdLib)
+sr2port.exe --game-dir Game              (VGA and AdLib; the original's video and sound menus are not shown)
 ```
 
 ## Layout

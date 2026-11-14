@@ -7,13 +7,12 @@ Every path is one sr2port run with the SDL dummy drivers on its own copy of Game
 written), SR_TRACE=1 on stderr, snapshots in work/s55snap/<path>/. A path is "ok" when the exit code is 0, the log has no
 "fatal" / assert / crash text, every marker of the path is in the log and (paths that finish by themselves) it ended before its
 time cap. One line per path: name, ok/FAIL, seconds, snapshot dir (+ the reason on failure). Exit code 0 only if all ran ok.
-Keys / clicks are SR_KEYS (host.h; seconds after start-up), the start-up sound menu answer is "1:03" (2 = normal).
+Keys / clicks are SR_KEYS (host.h; seconds after start-up).
 Dev aids used: SR_DEBUG_RACE (game/race_debug.c), SR_DEBUG_END (same file), `demo` (autopilot of ui_wait.c), SR_SEED.
 """
 import argparse, concurrent.futures as cf, os, re, shutil, subprocess, sys, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SND = "1:03"                       # sound menu: 2 (Normal)
 DEMO = ["demo", "v"]
 PLAIN = ["v"]
 
@@ -21,45 +20,45 @@ PLAIN = ["v"]
 PATHS = {
     # title -> protection question -> new game (licence name) -> newspaper -> classifieds
     "title_new": dict(args=PLAIN, env={"SR_SEED": "3"}, cap=48,
-                      keys=[SND, "25:1e", "26:1c", "30:30", "31:18", "32:30", "33:1c", "36:c154.51"],
+                      keys=["25:1e", "26:1c", "30:30", "31:18", "32:30", "33:1c", "36:c154.51"],
                       markers=[r"ui_push screen 31\b", r"ui_push screen 2\b", r"ui_push screen 3\b", r"ui_push screen 4\b"]),
     # the demo player: the bag of 17 garage codes (all sub-screens), newspaper, classifieds, used cars, gas, Bob's, races
-    "demo_tour": dict(args=DEMO, env={"SR_SEED": "11"}, keys=[SND], cap=420,
+    "demo_tour": dict(args=DEMO, env={"SR_SEED": "11"}, cap=420,
                       markers=[r"ui_push screen 3\b", r"ui_push screen 4\b", r"race_run mode"]),
     # one race of each kind, then the drive home (demo autopilot drives), race_results inside
-    "race_cruise": dict(args=DEMO, env={"SR_DEBUG_RACE": "cruise"}, keys=[SND], cap=240, finish="race_debug: done"),
-    "race_bob": dict(args=DEMO, env={"SR_DEBUG_RACE": "bob"}, keys=[SND], cap=420,
+    "race_cruise": dict(args=DEMO, env={"SR_DEBUG_RACE": "cruise"}, cap=240, finish="race_debug: done"),
+    "race_bob": dict(args=DEMO, env={"SR_DEBUG_RACE": "bob"}, cap=420,
                      finish=r"race_run mode (?:1|16|8) racing 1[\s\S]*race_run end", markers=[r"ui_push screen 2\d\b"]),
-    "jail": dict(args=DEMO, env={"SR_DEBUG_RACE": "jail"}, keys=[SND], cap=120, finish="race_debug: done",
+    "jail": dict(args=DEMO, env={"SR_DEBUG_RACE": "jail"}, cap=120, finish="race_debug: done",
                  markers=[r"ui_push screen 21\b"]),
-    "race_drag": dict(args=DEMO, env={"SR_DEBUG_RACE": "drag"}, keys=[SND], cap=240, finish="race_debug: done",
+    "race_drag": dict(args=DEMO, env={"SR_DEBUG_RACE": "drag"}, cap=240, finish="race_debug: done",
                       markers=[r"race_run mode 1\b", r"race_results -> "]),
-    "race_mulholland": dict(args=DEMO, env={"SR_DEBUG_RACE": "mulholland"}, keys=[SND], cap=300, finish="race_debug: done",
+    "race_mulholland": dict(args=DEMO, env={"SR_DEBUG_RACE": "mulholland"}, cap=300, finish="race_debug: done",
                             markers=[r"race_run mode 16\b", r"race_results -> "]),
-    "race_aqueduct": dict(args=DEMO, env={"SR_DEBUG_RACE": "aqueduct"}, keys=[SND], cap=300, finish="race_debug: done",
+    "race_aqueduct": dict(args=DEMO, env={"SR_DEBUG_RACE": "aqueduct"}, cap=300, finish="race_debug: done",
                           markers=[r"race_run mode 8\b", r"race_results -> "]),
-    "race_aqueduct_king": dict(args=DEMO, env={"SR_DEBUG_RACE": "aqueduct", "SR_DEBUG_OPP": "21"}, keys=[SND], cap=300,
+    "race_aqueduct_king": dict(args=DEMO, env={"SR_DEBUG_RACE": "aqueduct", "SR_DEBUG_OPP": "21"}, cap=300,
                                finish="race_debug: done", markers=[r"race_run mode 8\b"]),
-    "race_grudge": dict(args=DEMO, env={"SR_DEBUG_RACE": "grudge"}, keys=[SND], cap=420, finish="race_debug: done"),
+    "race_grudge": dict(args=DEMO, env={"SR_DEBUG_RACE": "grudge"}, cap=420, finish="race_debug: done"),
     # every garage hot spot by its hot key (Esc leaves each sub-screen): hood, bumpers, roof, under the car (click), car info,
     # paint, tyres, transmission, sell parts, cars, calendar, newspaper -> classifieds
     "garage_tour": dict(args=PLAIN, env={"SR_DEBUG_END": "garage"}, cap=112,
-                        keys=[SND, "6:23", "10:01", "13:30", "17:01", "20:21", "24:01", "27:13", "31:01", "34:c107.177", "38:01",
+                        keys=["6:23", "10:01", "13:30", "17:01", "20:21", "24:01", "27:13", "31:01", "34:c107.177", "38:01",
                               "41:17", "45:01", "48:19", "52:01", "55:14", "59:01", "62:1e", "66:01", "69:26", "73:01",
                               "76:2e", "80:01", "83:2d", "87:01", "90:31", "94:c154.51", "98:01", "101:01", "104:10"],
                         markers=[r"garage code %d\b" % c for c in (10, 11, 12, 13, 14, 16, 7, 8, 9, 5, 6, 3, 1)] +
                                 [r"ui_push screen 4\b", r"ui_push screen 34\b"]),
     # save a game (Q, Save Game, name "abc") and load it again (Q, Old Game, Enter); ends in the garage
     "save_load": dict(args=PLAIN, env={"SR_DEBUG_END": "garage"}, cap=40,
-                      keys=[SND, "6:10", "9:c125.102", "13:1e", "14:30", "15:2e", "16:1c", "20:10", "23:c125.120", "28:1c"],
+                      keys=["6:10", "9:c125.102", "13:1e", "14:30", "15:2e", "16:1c", "20:10", "23:c125.120", "28:1c"],
                       markers=[r"ui_push screen 28\b", r"ui_push screen 26\b"], files=["HOTROD0.SAV"]),
     # the endings: the SR2_end player after beating the King, hall of fame (name edit Enter), game-over menu (Quit)
     "end_king": dict(args=PLAIN, env={"SR_DEBUG_END": "king"}, cap=70, finish=r"ui_menu\(32\) -> 4",
-                     keys=[SND, "31:1c", "36:c160.116"], files=["HALL_DAT"], markers=[r"garage code 666"]),
+                     keys=["31:1c", "36:c160.116"], files=["HALL_DAT"], markers=[r"garage code 666"]),
     "end_summer": dict(args=PLAIN, env={"SR_DEBUG_END": "summer"}, cap=40, finish=r"ui_menu\(32\) -> 4",
-                       keys=[SND, "8:1c", "14:1c", "20:c160.116"], markers=[r"garage code 666"]),
+                       keys=["8:1c", "14:1c", "20:c160.116"], markers=[r"garage code 666"]),
     "end_broke": dict(args=PLAIN, env={"SR_DEBUG_END": "broke"}, cap=40, finish=r"ui_menu\(32\) -> 4",
-                      keys=[SND, "8:1c", "14:1c", "20:c160.116"], markers=[r"garage code 666"]),
+                      keys=["8:1c", "14:1c", "20:c160.116"], markers=[r"garage code 666"]),
 }
 BAD = re.compile(r"fatal|assert|segmentation|access violation|abort", re.I)
 
@@ -72,7 +71,7 @@ def run_path(name, spec, exe):
     os.makedirs(snap)
     shutil.copytree(os.path.join(ROOT, "Game"), game, ignore=shutil.ignore_patterns("*.exo"))   # never write into Game/
     env = dict(os.environ, SDL_VIDEO_DRIVER="dummy", SDL_AUDIO_DRIVER="dummy", SR_TRACE="1", SR_SEED="1",
-               SR_SNAPSHOT_DIR=snap, SR_SNAPSHOT_MS="4000", SR_KEYS=",".join(spec["keys"]))
+               SR_SNAPSHOT_DIR=snap, SR_SNAPSHOT_MS="4000", SR_KEYS=",".join(spec.get("keys", [])))
     env.update(spec.get("env", {}))
     cap = spec["cap"]
     cmd = [exe, "--game-dir", game, "--run-ms", str(cap * 1000)] + spec["args"]

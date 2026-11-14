@@ -31,7 +31,7 @@ so it must be writable. You can keep the `Game` folder anywhere and choose it in
 
        sr2port.exe --game-dir Game v adlib
 
-   `v` (VGA) and `adlib` (or `speaker`) skip the game's text menus. Without them the original menus appear.
+   Without switches the game starts in VGA with AdLib (the original's video and sound menus are not shown); `e` (EGA) or `speaker` choose otherwise.
    Other options: `--scale N` (window size), `--fullscreen`.
 
 ## Keys

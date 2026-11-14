@@ -13,57 +13,8 @@
 #include "platform/vga.h"
 #include "platform/video.h"
 
-/* ================================================================================ text menus */
-
-/* 0001:00c0 video_menu: the "Video Options" menu; returns 1..5 for a numeric key, 0 for any other key
- * (= accept the recommendation), Esc leaves the program. */
-static s16 video_menu(s16 rec)
-{
-    char buf[0x40];
-    if (rec < 1 || rec > 5) rec = 1;
-    text_mode_set();                                              /* INT 10h AX=0003h */
-    strcpy(buf, ds_str(DS_recommended_text));                     /* "Recommended mode: #" */
-    strcat(buf, ds_str(DSW((u16)(DS_VIDEO_MENU_LINES + 2 * rec))) + 2);   /* the menu line without its 2 leading chars */
-    set_text_cursor(0, 6);
-    dos_print_line(ds_str(DS_video_menu_title), 23);
-    dos_print_line(ds_str(DS_VIDEO_MENU_L2), 18);                 /* "Use numeric keys to select graphic mode" */
-    dos_print_line(ds_str(DS_VIDEO_MENU_L3), 15);                 /* "or press any other key to accept recommendation" */
-    for (int i = 1; i <= 6; i++)
-        dos_print_line(ds_str(DSW((u16)(DS_VIDEO_MENU_LINES + 2 * i))), 20);
-    dos_print_line(ds_str(DS_VIDEO_MENU_LINES), 0);               /* a blank line */
-    dos_print_line(buf, 13);
-    while (text_kbhit()) text_getch();                            /* flush type-ahead */
-    int k = text_getch() - '0';
-    if (k == -0x15) platform_exit();                              /* Esc */
-    return (k >= 1 && k <= 5) ? (s16)k : 0;
-}
-
-/* 0001:01ea sound_options_menu (sound.md): text screen; returns 0 = AdLib, 1 = PC speaker ("Normal"); any
- * other key = AdLib. PORT: shown as with a card, because adlib_detect always succeeds (Nuked-OPL3). */
-static s16 sound_options_menu(void)
-{
-    char buf[0x40];
-    text_mode_set();
-    set_text_cursor(0, 8);
-    dos_print_line(ds_str(DS_SND_MENU_TITLE), 23);                /* "STREET ROD II:  Sound Options" */
-    dos_print_line(ds_str(DS_SND_MENU_BLANK1), 0);
-    for (u16 p = DS_SND_MENU_LINES; p < DS_SND_MENU_LINES + 4; p += 2)
-        dos_print_line(ds_str(DSW(p)), 31);                       /* "1 - AdLib", "2 - Normal" */
-    dos_print_line(ds_str(DS_SND_MENU_BLANK2), 0);
-    dos_print_line(ds_str(DS_SND_MENU_BLANK3), 0);
-    strcpy(buf, ds_str(DS_SND_MENU_REC));                         /* "Recommended mode: #" */
-    strcat(buf, ds_str(DSW(DS_SND_MENU_LINES)));                  /* + "1 - AdLib" */
-    dos_print_line(buf, 23);
-    while (text_kbhit()) text_getch();
-    int i = text_getch() - '1';
-    return (i >= 0 && i <= 1) ? (s16)i : 0;
-}
-
-/* 2c57:1733 adlib_detect (sound.md): the AdLib timer test. PORT: the emulated chip is always there. */
-static s16 adlib_detect(void)
-{
-    return 1;
-}
+/* PORT: user decision 2026-11-14: the "Video Options" menu 0001:00c0 and "Sound Options" menu 0001:01ea are
+ * not shown; without a switch the game starts in VGA with AdLib (the switches still choose). */
 
 /* =========================================================================== video detection */
 
@@ -81,12 +32,7 @@ static s16 video_detect_menu(s16 forced)
     DSB(DS_bios_ega_mem) = 3;                                     /* 256 KB */
     DSB(DS_bios_ega_switch) = 9;                                  /* switch setting */
     s16 si = 3;                                                   /* vga_detect() != 0 */
-    if (forced != 0) {
-        si = forced;
-    } else {
-        s16 c = video_menu(si);
-        if (c != 0) si = c;
-    }
+    if (forced != 0) si = forced;                                /* PORT: no video menu, VGA by default */
     if (si == 1 && DSW(DS_ega_present) != 0) return 6;
     if (si == 3) {
         DSW(DS_g_vga) = 1;
@@ -180,8 +126,8 @@ void platform_main_init(int argc, char **argv)
         else if (stricmp_eq(a, "speaker")) forced_snd = 1;                  /* PORT: launcher: PC speaker ("Normal") */
     }
     s16 mode = video_detect_menu(forced);
-    s16 snd = forced_snd >= 0 ? forced_snd : adlib_detect() != 0 ? sound_options_menu() : 1;   /* PORT: launcher: forced_snd */
-    if (getenv("SR_TRACE")) fprintf(stderr, "trace: startup video mode %d (%s) sound %d (%s)\n", mode, forced ? "switch" : "menu", snd, forced_snd >= 0 ? "switch" : "menu");   /* PORT: developer aid */
+    s16 snd = forced_snd >= 0 ? forced_snd : 0;                  /* PORT: no sound menu, AdLib by default */
+    if (getenv("SR_TRACE")) fprintf(stderr, "trace: startup video mode %d (%s) sound %d (%s)\n", mode, forced ? "switch" : "default", snd, forced_snd >= 0 ? "switch" : "default");   /* PORT: developer aid */
     /* DS:0050 stays 666 until the sound init below (the timer ISR and platform_install test it) */
     mem_pools_init();
     driver_select(mode);
