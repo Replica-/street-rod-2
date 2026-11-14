@@ -94,9 +94,12 @@ bool amiga_init(bool enable)
 static struct { u16 seg, off; s16 id; } track[TRACK];
 static int track_next;
 
+static void car_forget(FarPtr bmp);
+
 void amiga_note_pic(FarPtr bmp, s16 id)
 {
     if (!on) return;
+    car_forget(bmp);                                          /* a car frame there is gone */
     for (int i = 0; i < TRACK; i++)
         if (track[i].seg == bmp.seg && track[i].off == bmp.off) { track[i].id = id; return; }
     track[track_next].seg = bmp.seg;
@@ -149,6 +152,18 @@ static struct { uint32_t *px; int w, h, flags; } car_work[22];          /* body 
 static struct { u16 seg, off; int model, w, h, light, dark; uint8_t *fit; } car_frames[8];   /* fit: 0xFF = clear */
 static int car_next;
 static struct { u16 seg, off, bseg, boff; int shift; } car_shifted[8];  /* frames 1..3 of a drive: base + shift */
+
+/* a picture loaded where a car frame was: the frame is gone (its memory is used again) */
+static void car_forget(FarPtr bmp)
+{
+    for (int i = 0; i < 8; i++) {
+        if (car_frames[i].fit && car_frames[i].seg == bmp.seg && car_frames[i].off == bmp.off) {
+            free(car_frames[i].fit);
+            car_frames[i].fit = NULL;
+        }
+        if (car_shifted[i].seg == bmp.seg && car_shifted[i].off == bmp.off) car_shifted[i].seg = car_shifted[i].off = 0;
+    }
+}
 
 static void rgb_to_hsv(uint32_t c, float *h, float *s, float *v)
 {
@@ -354,8 +369,8 @@ static bool car_blit(FarPtr src, int dpage, const Rect *r)
         if (car_frames[i].fit && car_frames[i].seg == base.seg && car_frames[i].off == base.off) f = i;
     if (f < 0) return false;
     int model = car_frames[f].model, w = car_frames[f].w, h = car_frames[f].h, sw = desc_w(src);
-    if (!car_work[model].px || desc_h(src) != h || sw < w || r->sx < 0 || r->sy < 0 || r->sx + r->w > sw ||
-        r->sy + r->h > h || !bmp_ok(src))
+    if (desc_h(src) != h || sw < w || sw > w + 8) return false;      /* not the car (its memory used again) */
+    if (!car_work[model].px || r->sx < 0 || r->sy < 0 || r->sx + r->w > sw || r->sy + r->h > h || !bmp_ok(src))
         return true;
     int aw = car_work[model].w, ah = car_work[model].h, ox = (w - aw) / 2, oy = h - ah;
     int x0 = r->sx, y0 = r->sy, x1 = r->sx + r->w, y1 = r->sy + r->h;
