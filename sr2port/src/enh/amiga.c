@@ -11,6 +11,7 @@
  * screen still shows the reference. Everything drawn on top stays the game's. The palette table comes with the map. */
 #include "enh/amiga.h"
 
+#include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -149,9 +150,24 @@ static int map_of(FarPtr bmp)
 
 void amiga_on_blit(FarPtr src, FarPtr dst, const Rect *r, bool masked)
 {
-    if (!on || !r || desc_type(dst) != DESC_TYPE_EGA || desc_type(src) == DESC_TYPE_EGA) return;
+    if (!on || !r || desc_type(dst) != DESC_TYPE_EGA) return;
+    FarPtr dp = desc_planes(dst);
+    int dpage = (int)(((u32)(dp.seg - 0xA000) * 16u + dp.off) / 0x2000);
+    if (desc_type(src) == DESC_TYPE_EGA) {                            /* page to page: the regions go along */
+        FarPtr sp = desc_planes(src);
+        int spage = (int)(((u32)(sp.seg - 0xA000) * 16u + sp.off) / 0x2000);
+        ega_copy_backdrops(spage, r->sx, r->sy, r->w, r->h, dpage, r->dx, r->dy);
+        return;
+    }
+    if (getenv("SR_AMIGA_TRACE"))                                     /* developer aid: pictures put on a page */
+        for (int i = 0; i < TRACK; i++)
+            if (track[i].seg == src.seg && track[i].off == src.off)
+                fprintf(stderr, "amiga: picture %d %dx%d -> page %d at %d,%d\n", track[i].id, r->w, r->h, dpage, r->dx, r->dy);
     int m = map_of(src);
-    if (m < 0) return;
+    if (m < 0) {                                                      /* another picture covers what was there */
+        if (!masked) ega_drop_backdrops(dpage, r->dx, r->dy, r->w, r->h);
+        return;
+    }
     if (!dec[m].tried) {
         dec[m].tried = true;
         int l = amiga_map[m].lib;
@@ -178,5 +194,5 @@ void amiga_on_blit(FarPtr src, FarPtr dst, const Rect *r, bool masked)
             ref[y * w + x] = clear ? 0xFF : (uint8_t)c;               /* 0xFF: not part of the picture */
             rgb[y * w + x] = pal_rgb[amiga_map[m].pal % NPAL][dec[m].idx[(sy + y) * sw + sx + x] & 63];
         }
-    ega_add_backdrop(ref, rgb, r->dx, r->dy, w, h);                     /* takes ownership */
+    ega_add_backdrop(ref, rgb, dpage, r->dx, r->dy, w, h);              /* takes ownership */
 }

@@ -25,9 +25,12 @@ void ega_set_start(u16 offset);              /* CRTC start address (bytes) */
 void ega_set_line_compare(int line);         /* first screen row (0..199) shown from offset 0; >= 200 = off */
 void ega_touch(void);                        /* marks the screen changed (after writes to the planes) */
 void ega_set_page_mask(int page, const u8 *mask);   /* ENHANCED: 320x200 see-through mask of a page, NULL = none */
-/* ENHANCED (--amiga): show rgb (w x h at page column x, row y) where the screen still shows the picture with colour
- * indices ref (0xFF = not part of it); takes ownership of both (malloc'd) */
-void ega_add_backdrop(u8 *ref, u32 *rgb, int x, int y, int w, int h);
+/* ENHANCED (--amiga, see ega.c): full-colour pictures where the screen still shows the game's picture. Regions at
+ * column x, row y of page `page` (plane offset / 2000h); add takes ownership of ref / rgb (malloc'd, ref 0xFF = not
+ * part of the picture). */
+void ega_add_backdrop(u8 *ref, u32 *rgb, int page, int x, int y, int w, int h);
+void ega_copy_backdrops(int spage, int sx, int sy, int w, int h, int dpage, int dx, int dy);
+void ega_drop_backdrops(int page, int x, int y, int w, int h);
 
 /* Palette register 0..15 = value as the attribute controller holds it: bits 0-2 = BGR, bit 4 =
  * intensity (the 200-line interpretation of mode 0Dh; the game ORs 10h into values 8..15), register 16 =

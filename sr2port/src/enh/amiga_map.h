@@ -1,8 +1,9 @@
 /* PC picture id -> Amiga picture (lib 0 = disk2/lib.p, 1 = disk1/libstart.p, index). Candidates from
  * tools/amiga_map.py (same size, same shape), checked by eye 2026-11-14 (work/amap1.png, amap2.png): car body pieces
  * and opponent cars left out (painted per car through the palette registers), wrong pairs dropped, the portraits in
- * order (Amiga = PC id - 1002). pal = the STREET_ROD palette table, picked by eye (work/amap_pal7.png,
- * race_tables.png, start_tables.png): 7 for the town / garage / menus, 1 for the race graphics.
+ * order (Amiga = PC id - 1002). Race graphics (dashboards, sky, horizon, panorama, mirror, A-pillar, starter) left out:
+ * the Amiga's are the same art in slightly other colours, and mixing them with the game's gauges left artefacts. pal = the STREET_ROD palette table, picked by eye (work/amap_pal7.png,
+ * race_tables.png, start_tables.png): 7 for the town / garage / menus.
  * Numbers only; the pictures are the user's own files. */
 static const struct { short pc_id; unsigned char lib; short index; unsigned char pal; } amiga_map[] = {
     { 4, 1, 31, 2 },                                           /* LIB1 #3 wanted poster */
@@ -10,6 +11,9 @@ static const struct { short pc_id; unsigned char lib; short index; unsigned char
     { 1004, 0, 117, 7 }, { 1005, 0, 118, 7 }, { 1006, 0, 119, 7 },   /* load / save / forget it */
     { 1007, 0, 32, 7 }, { 1013, 0, 102, 7 }, { 1018, 0, 144, 7 },    /* newspaper headers, classifieds, garage */
     { 1055, 0, 106, 7 },                                       /* engine screen */
+    { 1072, 0, 142, 7 }, { 1073, 0, 120, 7 },                     /* gas station, Burger's Bungalow (redrawn: below
+                                                                 * the matcher's threshold, checked by eye) */
+    { 1209, 0, 114, 7 },                                       /* King Street Rodders wall */
     { 1057, 0, 0, 7 }, { 1058, 0, 1, 7 }, { 1059, 0, 2, 7 },         /* speech bubbles */
     { 1083, 1, 32, 9 },                                        /* ending text panel */
     { 1110, 0, 122, 7 }, { 1111, 0, 123, 7 },
@@ -20,8 +24,4 @@ static const struct { short pc_id; unsigned char lib; short index; unsigned char
     { 1171, 0, 169, 7 }, { 1172, 0, 170, 7 }, { 1173, 0, 171, 7 }, { 1174, 0, 172, 7 }, { 1175, 0, 173, 7 },
     { 1176, 0, 174, 7 }, { 1177, 0, 175, 7 }, { 1178, 0, 176, 7 }, { 1179, 0, 177, 7 }, { 1180, 0, 178, 7 },
     { 1198, 0, 264, 7 },
-    { 2000, 0, 292, 1 }, { 2057, 0, 294, 1 }, { 2058, 0, 295, 1 },   /* small figures */
-    { 2002, 0, 39, 1 }, { 2055, 0, 40, 1 }, { 2056, 0, 285, 1 },     /* race sky, horizon, Mulholland panorama */
-    { 2005, 0, 67, 1 }, { 2011, 0, 70, 1 }, { 2012, 0, 78, 1 },      /* mirror frame, dashboards */
-    { 2067, 0, 289, 1 }, { 2068, 0, 290, 1 },                     /* A-pillar, starter */
 };
