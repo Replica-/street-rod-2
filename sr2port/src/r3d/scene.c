@@ -232,6 +232,85 @@ static void sprite_draw(const R3dSprite *s, float cam_yaw, const float *mvp, con
     gl.BindVertexArray(0);
 }
 
+/* ---------------------------------------------------------------- scenery */
+
+static struct { GLuint tex; int w, h, ox, oy; float sc; uint32_t hash; } shp[R3D_SHAPES];
+#define MAX_OBJECTS 12000
+static R3dObject objects[MAX_OBJECTS];
+static int nobjects;
+#define MAX_SVERTS 36000
+static SVert sverts[MAX_SVERTS];
+
+void r3d_shape_upload(int type, const uint32_t *bgra, int w, int h, int ox, int oy, float scale)
+{
+    if (type < 0 || type >= R3D_SHAPES || w <= 0 || h <= 0 || !sprog) return;
+    uint32_t hsh = 2166136261u ^ (uint32_t)(w * 7919 + h * 31 + ox * 131 + oy);
+    for (int i = 0; i < w * h; i++) hsh = (hsh ^ bgra[i]) * 16777619u;
+    shp[type].w = w; shp[type].h = h; shp[type].ox = ox; shp[type].oy = oy; shp[type].sc = scale;
+    if (shp[type].tex && hsh == shp[type].hash) return;
+    shp[type].hash = hsh;
+    if (!shp[type].tex) {
+        gl.GenTextures(1, &shp[type].tex);
+        gl.BindTexture(GL_TEXTURE_2D, shp[type].tex);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+    gl.BindTexture(GL_TEXTURE_2D, shp[type].tex);
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, bgra);
+}
+
+void r3d_objects_set(const R3dObject *objs, int n)
+{
+    if (n > MAX_OBJECTS) n = MAX_OBJECTS;
+    if (n < 0) n = 0;
+    memcpy(objects, objs, (size_t)n * sizeof *objs);
+    nobjects = n;
+}
+
+/* the objects of segments first..last-1 as camera-facing pictures, one draw per shape type */
+static void scenery_draw(int first, int last, float cam_yaw, const float *mvp, const float *eye, const float *fog)
+{
+    float rx = cosf(cam_yaw), rz = -sinf(cam_yaw);
+    gl.UseProgram(sprog);
+    gl.UniformMatrix4fv(sloc_mvp, 1, GL_FALSE, mvp);
+    gl.Uniform3f(sloc_eye, eye[0], eye[1], eye[2]);
+    gl.Uniform3f(sloc_fog, fog[0], fog[1], fog[2]);
+    gl.Uniform1i(sloc_tex, 0);
+    gl.ActiveTexture(GL_TEXTURE0);
+    gl.BindVertexArray(svao);
+    gl.BindBuffer(GL_ARRAY_BUFFER, svbo);
+    for (int t = 0; t < R3D_SHAPES; t++) {
+        if (!shp[t].tex) continue;
+        int n = 0;
+        float sc = shp[t].sc, w = (float)shp[t].w, h = (float)shp[t].h, ox = (float)shp[t].ox, oy = (float)shp[t].oy;
+        for (int i = 0; i < nobjects && n + 6 <= MAX_SVERTS; i++) {
+            const R3dObject *o = &objects[i];
+            if (o->type != t || o->seg < first || o->seg >= last) continue;
+            float bx, by, bz;
+            track_point((float)o->seg, (float)o->x, 0, &bx, &by, &bz);
+            bool mir = o->side <= 0;
+            float l = (mir ? -(w - ox) : -ox) * sc, r = (mir ? ox : w - ox) * sc;
+            float u0 = mir ? 1.0f : 0.0f, u1 = 1.0f - u0;
+            float top = by + oy * sc, bot = by + (oy - h) * sc;
+            SVert q[6] = {
+                { bx + rx * l, bot, bz + rz * l, u0, 1 }, { bx + rx * r, bot, bz + rz * r, u1, 1 },
+                { bx + rx * r, top, bz + rz * r, u1, 0 }, { bx + rx * l, bot, bz + rz * l, u0, 1 },
+                { bx + rx * r, top, bz + rz * r, u1, 0 }, { bx + rx * l, top, bz + rz * l, u0, 0 },
+            };
+            memcpy(sverts + n, q, sizeof q);
+            n += 6;
+        }
+        if (!n) continue;
+        gl.BindTexture(GL_TEXTURE_2D, shp[t].tex);
+        gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(n * sizeof(SVert)), sverts, GL_STREAM_DRAW);
+        gl.DrawArrays(GL_TRIANGLES, 0, n);
+    }
+    gl.BindVertexArray(0);
+}
+
 /* ---------------------------------------------------------------- GL */
 
 bool r3d_scene_init(void)
@@ -255,6 +334,9 @@ bool r3d_scene_init(void)
 
 void r3d_scene_shutdown(void)
 {
+    for (int t = 0; t < R3D_SHAPES; t++)
+        if (shp[t].tex) gl.DeleteTextures(1, &shp[t].tex);
+    memset(shp, 0, sizeof shp);
     sprites_shutdown();
     if (vbo) gl.DeleteBuffers(1, &vbo);
     if (vao) gl.DeleteVertexArrays(1, &vao);
@@ -386,5 +468,6 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh)
     gl.BindVertexArray(0);
 
     const float eye[3] = { ex, ey, ez };
+    scenery_draw(first, last, v->heading * YAW_RAD, mvp, eye, haze);
     sprite_draw(&v->opp, v->heading * YAW_RAD, mvp, eye, haze);
 }

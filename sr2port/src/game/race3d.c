@@ -142,6 +142,163 @@ static void opp_sprite(R3dSprite *o)
     o->along = s == 0;
 }
 
+/* ---------------------------------------------------------------- scenery (R1.4) */
+
+/* SR2_SHP format-A set at DS:8172[type]: {u16 n_lods; LodRec far *recs}; LodRec = 16 bytes: 6 x {u8 colour, u8 count}
+ * (count 0 ends), far spans at +12; span = {s8 dx, s8 dy, s8 w}: pixels dx..dx+w on row dy (shape_draw 4154). */
+typedef struct { u32 spans; int n, x0, x1, y0, y1; } LodBox;
+
+static bool lod_box(u32 recs, int l, LodBox *b)
+{
+    u32 r = recs + 16u * (u32)l;
+    if (r + 16 > MEM_SIZE) return false;
+    b->spans = lin(mem[r + 14] | mem[r + 15] << 8, mem[r + 12] | mem[r + 13] << 8);
+    b->n = 0;
+    for (int k = 0; k < 6 && mem[r + 2 * k + 1]; k++) b->n += mem[r + 2 * k + 1];
+    if (b->n <= 0 || b->spans + 3u * (u32)b->n > MEM_SIZE) return false;
+    b->x0 = b->y0 = 1000;
+    b->x1 = b->y1 = -1000;
+    for (int i = 0; i < b->n; i++) {
+        const u8 *s = mem + b->spans + 3 * i;
+        int dx = (s8)s[0], dy = (s8)s[1], w = (s8)s[2];
+        if (dx < b->x0) b->x0 = dx;
+        if (dx + w > b->x1) b->x1 = dx + w;
+        if (dy < b->y0) b->y0 = dy;
+        if (dy > b->y1) b->y1 = dy;
+    }
+    return b->x1 >= b->x0 && b->y1 >= b->y0;
+}
+
+/* the largest LOD as a picture, with its world scale: the original uses LOD l at depth row 9 - l (scenery_draw_shape
+ * 5158), row k at about z = 8k + 4, so world height = pixel height * z / 4; the median over the LODs */
+static void upload_shape(int type, const u32 *rgb)
+{
+    FarPtr set = ds_far((u16)(DS_shp_a_ptrs + 4 * type));
+    if (!set.seg && !set.off) return;
+    u32 sa = lin(set.seg, set.off);
+    if (sa + 6 > MEM_SIZE) return;
+    int n = mem[sa] | mem[sa + 1] << 8;
+    if (n < 1 || n > 12) return;
+    u32 recs = lin(mem[sa + 4] | mem[sa + 5] << 8, mem[sa + 2] | mem[sa + 3] << 8);
+    LodBox best = { 0 }, b;
+    float worlds[12];
+    int nw = 0, big = -1;
+    for (int l = 0; l < n; l++) {
+        if (!lod_box(recs, l, &b)) continue;
+        int h = b.y1 - b.y0 + 1, row = 9 - l < 1 ? 1 : 9 - l;
+        worlds[nw++] = (float)h * (float)(8 * row + 4) / 4.0f;
+        if (big < 0 || h > best.y1 - best.y0 + 1) { best = b; big = l; }
+    }
+    if (big < 0 || nw == 0) return;
+    for (int i = 1; i < nw; i++)                          /* median of the world heights */
+        for (int j = i; j > 0 && worlds[j] < worlds[j - 1]; j--) { float t = worlds[j]; worlds[j] = worlds[j - 1]; worlds[j - 1] = t; }
+    float world_h = worlds[nw / 2];
+    int w = best.x1 - best.x0 + 1, h = best.y1 - best.y0 + 1;
+    if (w * h > PIC_MAX) return;
+    memset(pic_px, 0, (size_t)w * h * sizeof(u32));
+    u32 r = recs + 16u * (u32)big;
+    int span = 0;
+    for (int k = 0; k < 6 && mem[r + 2 * k + 1]; k++) {
+        u32 c = rgb[mem[r + 2 * k] & 15];
+        for (int m = mem[r + 2 * k + 1]; m > 0; m--, span++) {
+            const u8 *s = mem + best.spans + 3 * span;
+            int dx = (s8)s[0], dy = (s8)s[1], sw = (s8)s[2];
+            for (int x = dx; x <= dx + sw; x++) pic_px[(dy - best.y0) * w + (x - best.x0)] = c;
+        }
+    }
+    r3d_shape_upload(type, pic_px, w, h, -best.x0, -best.y0, world_h / (float)h);
+}
+
+static void road_edges(u16 c, int *xl, int *xr)
+{
+    unsigned cm = c & 0xE0;
+    if (cm == 0) { *xl = 0x5DC; *xr = 0xCE4; }
+    else if (cm & 0x80) { *xl = 0x7D0; *xr = 0xAF0; }
+    else if (cm & 0x20) { *xl = *xr = 0xCE4; }
+    else { *xl = *xr = 0x5DC; }
+}
+
+#define MAX_OBJECTS 12000
+static R3dObject objs[MAX_OBJECTS];
+
+/* front_objects (6a32) for every segment, in world lateral units (the original's screen-x sums are linear in the
+ * world x of one row). Simplified: fast machine (cpu > 3), bush groups as one bush, no sign pictures. */
+static int build_objects(void)
+{
+    int n = 0, mode = MODE, w = mode == 0x10 ? 200 : 400;
+    int xol = 0x5DC - w, xor_ = 0xCE4 + w, xfl = -(w - 0x177) * 4, xfr = (w + 0x339) * 4;
+    int t4 = mode == 0x10 ? 0x15 : 4, u = mode == 0x10 ? 0x16 : 0xB;
+#define ADD(xx, t, sd) do { if (n < MAX_OBJECTS) { objs[n].seg = (int16_t)i; objs[n].x = (int16_t)(xx); \
+        objs[n].type = (uint8_t)(t); objs[n].side = (int8_t)(sd); n++; } } while (0)
+    for (int i = 0; i < R3D_TRACK_N; i++) {
+        u16 L = TRKW(TRK_L, i), R = TRKW(TRK_R, i), C = TRKW(TRK_C, i);
+        bool cross = C & 1, flat_l = TRKS(TRK_BL, i) == 0, flat_r = TRKS(TRK_BR, i) == 0;
+        int xl, xr;
+        road_edges(C, &xl, &xr);
+        if (mode != 0x10 && (L & 0x20)) ADD(xl, 0, -1);
+        if (L & 0x100) {
+            if (cross) ADD(xl, 4, -1);
+            else if (!(mode == 0x10 && !flat_l)) ADD((L & 0x200) ? 2 * xol - xl : xol, t4, -1);
+        }
+        if (!(mode & 7) && (L & 0x800)) ADD(xl, 3, 1);
+        if (!(mode & 7) && (L & 0x1000)) ADD(xl, 6, 1);
+        if (!(mode & 6) && (L & 1) && !cross && flat_l) ADD(xl, 1, 1);
+        if (mode == 0x10 && (L & 0x10)) ADD(xl - 150, 8, 1);
+        if ((mode & 7) || flat_l) {
+            if (L & 0x40) ADD(xol, 0xA, -1);
+            if (L & 0x80) ADD((!cross && (L & 2)) ? xfl : xol, u, -1);
+        }
+        if ((mode & 7) || flat_r) {
+            if (R & 0x40) ADD(xor_, 0xA, 1);
+            if (R & 0x80) ADD((!cross && (R & 2)) ? xfr : xor_ + ((xor_ - xr) >> 1), u, 1);
+        }
+        if (!cross) {
+            if ((mode & 1) || flat_l) { if (L & 4) ADD(xl - 2, 7, -1); if (L & 8) ADD(xl - 2, 8, -1); }
+            if ((mode & 1) || flat_r) { if (R & 4) ADD(xr + 2, 7, 1); if (R & 8) ADD(xr + 2, 8, 1); }
+        } else {
+            if (L & 0x40) ADD(xl, 2, 1);
+            if (R & 0x40) ADD(xr, 2, -1);
+        }
+        if (!cross && (C & 2) && (mode != 0x10 || flat_r) && !(mode & 6)) ADD(xor_ - ((xr - xl) >> 3), 9, 1);
+        if (mode != 0x10 && (R & 0x20)) ADD(xr, 0, 1);
+        if (R & 0x100) {
+            if (cross) ADD(xr, 4, 1);
+            else if (!(mode == 0x10 && !flat_r)) ADD((R & 0x200) ? 2 * xor_ - xr : xor_, t4, 1);
+        }
+        if (R & 0x2000) ADD(xr, 0x12, 1);
+        if (R & 0x4000) ADD(xr, 0x13, 1);
+        if (R & 0x800) ADD(xr, 3, 1);
+        if (R & 0x1000) ADD(xr, 6, -1);
+        if (!(mode & 6) && (R & 1) && !cross && flat_r) ADD(xr, 1, -1);
+        if (mode == 0x10 && (R & 0x10)) ADD(xr + 150, 8, -1);
+        if (mode == 0x10 && (C & 4)) {
+            s16 x6 = TRKS(TRK_LANE, i);
+            ADD(xl + ((x6 * (xr - xl)) >> 4), 7, x6 < 9 ? -1 : 1);
+        }
+    }
+#undef ADD
+    return n;
+}
+
+static void push_scenery(void)
+{
+    static u32 last_sum;
+    static int last_mode = -1;
+    u32 sum = 2166136261u;
+    for (int i = 0; i < R3D_TRACK_N; i++)
+        sum = (sum ^ (TRKW(TRK_L, i) | (u32)TRKW(TRK_R, i) << 16) ^ TRKW(TRK_C, i)) * 16777619u;
+    u32 rgb[16];
+    for (int i = 0; i < 16; i++) {
+        u8 v = ega_get_palette_reg(i);
+        rgb[i] = ega_palette[(v & 7) | (v >> 1 & 8)] | 0xFF000000u;
+    }
+    for (int t = 0; t < R3D_SHAPES; t++) upload_shape(t, rgb);   /* cheap; hashed by r3d */
+    if (sum == last_sum && MODE == last_mode) return;
+    last_sum = sum;
+    last_mode = MODE;
+    r3d_objects_set(objs, build_objects());
+}
+
 static void push_track(void)
 {
     static R3dTrack t;
@@ -169,6 +326,7 @@ static void push_view(void)
     v.opp_pos = (float)DSS(DS_opp_seg) + (float)(DSS(DS_opp_seg_frac64) & 0x3F) / 64.0f;
     v.opp_lat = (float)DSS(DS_opp_lat);
     v.mode = MODE;
+    push_scenery();
     opp_sprite(&v.opp);
     r3d_view_push(&v);
 }
