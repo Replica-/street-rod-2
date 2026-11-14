@@ -519,6 +519,8 @@ static void scripted_keys(void)
     spec = *p == ',' ? p + 1 : NULL;
 }
 
+static bool vsync_locked(Uint64 now);
+
 void host_pump(void)
 {
     process_events();
@@ -538,7 +540,7 @@ void host_pump(void)
 
     /* Present at most once per ~8 ms; VSync paces it further. ENHANCED: every time while the 3D race view is live
      * (it moves between the game's frames). */
-    if (frame_source && now - last_present_ns >= 8 * SDL_NS_PER_MS) {
+    if (frame_source && now - last_present_ns >= 8 * SDL_NS_PER_MS && !vsync_locked(now)) {
         bool changed = frame_source(frame);
         if (changed || r3d_view_live()) {
             present();
@@ -559,8 +561,46 @@ void host_pump(void)
 
 #define VRETRACE_WINDOW_NS 1500000ull     /* 49 blank lines x 31.8 us */
 
+/* ENHANCED (not --classic): with vsync, the retrace the game waits for is the display's own (every n-th refresh, the
+ * rate closest to 70 Hz, r3d_vsync_period_ns): each wait shows the picture (the swap waits for the vertical blank), so
+ * every frame the game draws is shown for the same time, none dropped or held longer (70 Hz frames on a 60 or 120 Hz
+ * display judder). Animations paced by the retrace then run at that rate (60 Hz: 60/70 of the VGA's); the game clock
+ * (PIT) is not affected. Off while the 3D race view runs (it
+ * presents on its own) and when the swap does not wait (window covered): the VGA timing then. */
+static Uint64 lock_wait_ns, lock_swap_ns;   /* last locked wait; last swap's return */
+
+static bool vsync_locked(Uint64 now)
+{
+    if (lock_wait_ns && now - lock_wait_ns < 200 * SDL_NS_PER_MS) return true;
+    if (lock_wait_ns) { r3d_vsync_lock(false); lock_wait_ns = 0; }   /* no retrace waits any more: normal presenting */
+    return false;
+}
+
+static bool vsync_wait(void)
+{
+    Uint64 per = frame_source && !r3d_view_live() ? r3d_vsync_period_ns() : 0;
+    r3d_vsync_lock(per != 0);
+    if (!per) return false;
+    Uint64 t0 = SDL_GetTicksNS();
+    lock_wait_ns = t0;
+    host_pump();                                    /* ticks, audio, input (no present while locked) */
+    frame_source(frame);
+    present();
+    Uint64 t1 = SDL_GetTicksNS();
+    if (lock_swap_ns && t1 - lock_swap_ns < per / 2)    /* the swap did not wait: keep the display's pace */
+        while ((t1 = SDL_GetTicksNS()) - lock_swap_ns < per) host_pump();
+    lock_swap_ns = t1;
+    last_present_ns = t1;
+    lock_wait_ns = t1;
+    return true;
+}
+
 bool host_in_vretrace(void)
 {
+    if (vsync_locked(SDL_GetTicksNS()) && lock_swap_ns) {
+        Uint64 per = r3d_vsync_period_ns();
+        if (per) return (SDL_GetTicksNS() - lock_swap_ns) % per < VRETRACE_WINDOW_NS;
+    }
     Uint64 since = SDL_GetTicksNS() - clock_start_ns;
     Uint64 frame_start = since * VRETRACE_DEN / VRETRACE_NUM * VRETRACE_NUM / VRETRACE_DEN;
     return since - frame_start < VRETRACE_WINDOW_NS;
@@ -568,6 +608,7 @@ bool host_in_vretrace(void)
 
 void host_wait_vretrace(void)
 {
+    if (vsync_wait()) return;
     Uint64 since = SDL_GetTicksNS() - clock_start_ns;
     Uint64 next = (since * VRETRACE_DEN / VRETRACE_NUM + 1) * VRETRACE_NUM / VRETRACE_DEN;
     while (SDL_GetTicksNS() - clock_start_ns < next) host_pump();

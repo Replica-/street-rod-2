@@ -98,5 +98,10 @@ typedef struct {
 void r3d_track_set(const R3dTrack *t);
 /* True while the race code keeps pushing views (3D race view on screen). */
 bool r3d_view_live(void);
+/* ENHANCED: the retrace period (ns) locked to the display: n refreshes (swap interval n) with n refreshes closest to
+ * the VGA's 70 Hz (60 Hz display: 1, 120 Hz: 2 = 60 Hz, 144 Hz: 2 = 72 Hz); 0 when the picture is not shown with vsync
+ * (hidden window, --classic, unknown rate). r3d_vsync_lock(true) sets that swap interval, false the normal 1. */
+Uint64 r3d_vsync_period_ns(void);
+void r3d_vsync_lock(bool on);
 
 #endif

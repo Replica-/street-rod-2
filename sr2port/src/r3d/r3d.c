@@ -242,6 +242,36 @@ static R3dView view_now(void)
 #define VIEW_TOP 18
 #define VIEW_BOTTOM 102
 
+static int vsync_n(float hz)
+{
+    int best = 1;
+    for (int n = 2; n <= 8; n++)
+        if (SDL_fabsf(hz / (float)n - 70.0f) < SDL_fabsf(hz / (float)best - 70.0f)) best = n;
+    return best;
+}
+
+static float display_hz(void)
+{
+    if (!ctx || r3d_classic() || (SDL_GetWindowFlags(win) & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED))) return 0;
+    const SDL_DisplayMode *m = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(win));
+    return m && m->refresh_rate >= 50.0f && m->refresh_rate <= 500.0f ? m->refresh_rate : 0;
+}
+
+Uint64 r3d_vsync_period_ns(void)
+{
+    float hz = display_hz();
+    return hz > 0 ? (Uint64)(1e9 * vsync_n(hz) / (double)hz) : 0;
+}
+
+void r3d_vsync_lock(bool on)
+{
+    static int cur = 1;
+    float hz = display_hz();
+    int want = on && hz > 0 ? vsync_n(hz) : 1;
+    if (!ctx || want == cur || (SDL_GetWindowFlags(win) & SDL_WINDOW_HIDDEN)) return;
+    if (SDL_GL_SetSwapInterval(want)) cur = want;
+}
+
 void r3d_present(const uint32_t *frame, int fw, int fh)
 {
     if (!ctx) return;
