@@ -68,7 +68,7 @@ void paint_job(void)
         if (amiga_active()) {                                      /* ENHANCED: the full-colour garage's can keeps its
                                                                     * colour: the car itself shows the paint */
             set_paint_palette(i);
-            if (sw >= 0) amiga_paint_preview(amiga_swatch_rgb(sw));
+            if (sw >= 0) amiga_paint_preview(amiga_swatch_rgb(sw), i);
             amiga_swatch_select(sw);
         }
         do b = ui_wait(3000); while (b == 0);

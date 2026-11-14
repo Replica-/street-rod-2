@@ -447,7 +447,7 @@ static u32 src_px(const Src *s, int x, int y)
         if (x >= s->img->w || y >= s->img->h) return SH_GAME;
         if (!(s->img->px[y * s->img->w + x] >> 24)) return SH_KEEP;   /* see-through: the picture is hidden there */
         if ((s->img->px[y * s->img->w + x] >> 24) == 254)              /* the car's paint (the dashboards' top band) */
-            return SH_PAINT(6) | (s->img->px[y * s->img->w + x] & 0xFFFFFF);
+            return SH_PAINT(7) | (s->img->px[y * s->img->w + x] & 0xFFFFFF);
         return SH_RGB | (s->img->px[y * s->img->w + x] & 0xFFFFFF);
     default:
         return SH_GAME;
@@ -722,14 +722,16 @@ void amiga_paint_apply(u16 car, int index)
         for (int i = 0; i < npaint; i++)
             if (paint[i].car == car && paint[i].index == index) rgb = paint[i].rgb;
     }
-    sh_set_paint(6, rgb);
-    sh_set_paint(7, rgb);
-    ega_touch();
+    amiga_paint_preview(rgb, index);
 }
 
-void amiga_paint_preview(u32 rgb)
+/* the paint pair (registers 6 dark, 7 light) of game colour `index` shown as rgb: 7 = rgb, 6 = a darker shade */
+void amiga_paint_preview(u32 rgb, int index)
 {
-    sh_set_paint(6, rgb);
-    sh_set_paint(7, rgb);
+    int e6 = DSB((u16)(DS_PAINT + 3 * index)), e7 = DSB((u16)(DS_PAINT + 3 * index + 1));
+    u32 dark = rgb ? ((rgb >> 16 & 255) * 7 / 10) << 16 | ((rgb >> 8 & 255) * 7 / 10) << 8 | (rgb & 255) * 7 / 10 : 0;
+    if (rgb && !dark) dark = 0x010101;
+    sh_set_paint(6, dark, e6);
+    sh_set_paint(7, rgb, e7);
     ega_touch();
 }

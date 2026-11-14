@@ -41,4 +41,4 @@ int  amiga_swatch_hit(int x, int y);
 u32  amiga_swatch_rgb(int i);
 void amiga_paint_set(u16 car, int index, u32 rgb);
 void amiga_paint_apply(u16 car, int index);
-void amiga_paint_preview(u32 rgb);
+void amiga_paint_preview(u32 rgb, int index);

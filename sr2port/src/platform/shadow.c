@@ -162,19 +162,30 @@ static u32 hsv_to_rgb(float h, float s, float v)
     return 0xFF000000u | (u32)(r * 255.0f + 0.5f) << 16 | (u32)(g * 255.0f + 0.5f) << 8 | (u32)(b * 255.0f + 0.5f);
 }
 
-static u32 paint_over[16];                   /* 0 = none, else 0xFF000000 | rgb */
+/* the car's own paint colour shown by a palette register while it holds the game's paint colour `expect` (0..15) */
+static struct { u32 rgb; int expect; } paint_over[16];
 
-void sh_set_paint(int reg, u32 rgb)
+void sh_set_paint(int reg, u32 rgb, int expect)
 {
-    if (reg >= 0 && reg < 16) paint_over[reg] = rgb ? (0xFF000000u | rgb) : 0;
+    if (reg >= 0 && reg < 16) { paint_over[reg].rgb = rgb ? (0xFF000000u | rgb) : 0; paint_over[reg].expect = expect; }
+}
+
+void sh_paint_regs(u32 *rgb, const u8 *regs)
+{
+    for (int r = 0; r < 16; r++)
+        if (paint_over[r].rgb && ((regs[r] & 7) | (regs[r] >> 1 & 8)) == paint_over[r].expect) rgb[r] = paint_over[r].rgb;
 }
 
 u32 sh_colour(u32 v, const u32 *pal)
 {
     if (!SH_IS_PAINT(v)) return v | 0xFF000000u;
-    /* the paint over the Amiga shading: hue and saturation of the live paint register, the Amiga brightness */
+    /* the paint over the Amiga shading: hue and saturation of the paint register (the car's own colour), its
+     * brightness scaled by the Amiga shade (0.8 = the paint's own colour: highlights lighter, shadows darker) */
     float ph, ps, pv, hh, ss, vv;
-    rgb_to_hsv(paint_over[v >> 24 & 15] ? paint_over[v >> 24 & 15] : pal[v >> 24 & 15], &ph, &ps, &pv);
+    rgb_to_hsv(pal[v >> 24 & 15], &ph, &ps, &pv);
     rgb_to_hsv(v, &hh, &ss, &vv);
-    return hsv_to_rgb(ph, ps < 0.08f ? 0.0f : (ss < ps ? ss : ps), vv * (0.55f + 0.45f * pv));
+    float out = pv * vv / 0.8f;
+    float sat = ps;
+    if (out > 1.0f) { sat = ps * (2.0f - out); if (sat < 0) sat = 0; out = 1.0f; }   /* highlights towards white */
+    return hsv_to_rgb(ph, ps < 0.08f ? 0.0f : sat, out);
 }

@@ -50,8 +50,10 @@ u32 sh_at(u32 base, u32 stride, int x, int y);
 void sh_block_set(u16 seg, u16 off, u32 stride, int h, u32 *px);   /* takes px (stride * 8 * h entries) */
 const u32 *sh_block_get(u16 seg, u16 off, u32 stride, int h);      /* NULL: none, or the RAM changed since */
 
-/* the car paint of palette register reg shown in rgb (0xRRGGBB) instead of the register's colour; 0 = the register's */
-void sh_set_paint(int reg, u32 rgb);
+/* palette register reg shows rgb (0xRRGGBB; 0 = its own colour) while it holds the game's colour `expect` (0..15):
+ * the car's own paint; sh_paint_regs applies that to the 16 live colours (regs: the register values) */
+void sh_set_paint(int reg, u32 rgb, int expect);
+void sh_paint_regs(u32 *rgb, const u8 *regs);
 
 /* the colour of an entry (pal: the 16 live palette colours 0xAARRGGBB) */
 u32 sh_colour(u32 v, const u32 *pal);

@@ -58,6 +58,7 @@ static bool compose(u32 *xrgb)
         u8 v = palette_reg[i];              /* 200-line decoding: bits 0-2 BGR, bit 4 intensity */
         rgb[i] = ega_palette[(v & 7) | (v >> 1 & 8)] | 0xFF000000u;   /* ENHANCED: alpha = opaque */
     }
+    if (sh_enabled()) sh_paint_regs(rgb, palette_reg);   /* ENHANCED (--amiga): the car's own paint colour */
     int page = start_addr / 0x2000;
     const u8 *mask = (page < 4 && r3d_view_live()) ? page_mask[page] : NULL;
     bool fill_only = false;                 /* the page changed since: see-through only where the fill (15) still is */

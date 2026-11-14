@@ -40,6 +40,13 @@ CROP = {3: (40, 40, 256, 97)}                       # the California Dreams logo
 # race pictures whose Amiga colours 6 / 7 (and half-bright 38 / 39) are the car's paint (the dashboards' top band):
 # alpha 254 = recoloured to the car's paint at run time, as the cars
 PAINT_PICS = {2011, 2012, 2019}
+# the driver's hands on the steering wheel (Amiga #79 left, #80 right), as the Amiga race view shows them: on the rim
+# where it meets the bottom of the screen, centred at (left x, right x, y) of each dashboard. Their colours 6, 7, 8, 9,
+# 11, 12 and the half-bright 43, 44 are one skin ramp, lit to shadow (the Amiga sets 6-9 per screen band)
+HANDS = {2011: (85, 257, 71), 2012: (85, 257, 71), 2019: (85, 257, 71)}
+HAND_SKIN = {6: (250, 210, 170), 7: (236, 190, 148), 8: (218, 168, 126), 9: (196, 144, 104), 11: (170, 120, 84),
+             12: (142, 98, 66), 39: (150, 108, 76), 40: (136, 96, 66), 41: (120, 82, 56), 43: (110, 74, 50),
+             44: (88, 58, 38)}
 HIDE = {1149}                                      # Burger's Bungalow: the man by the door (the Amiga picture has him)
 
 
@@ -157,7 +164,21 @@ def main():
             w, h = cw, ch
         p = amilib.exe_palette(int(pal), libs[int(lib)][int(idx)]['depth'])
         a = lambda c: 0xFE000000 if int(pid) in PAINT_PICS and (c & 31) in (6, 7) else 0xFF000000
-        write_bmp(os.path.join(out, 'pic_%s.bmp' % pid), w, h, [a(c) | rgb(p[c % len(p)]) for c in I])
+        px = [a(c) | rgb(p[c % len(p)]) for c in I]
+        if int(pid) in HANDS:
+            hp = list(p)
+            for k, c in HAND_SKIN.items():
+                hp[k] = c
+            lx, rx, cy = HANDS[int(pid)]
+            for hand, cx in ((79, lx), (80, rx)):
+                hw, hh, HI = decode(libs[0], hand)
+                for y in range(hh):
+                    for x in range(hw):
+                        c = HI[y * hw + x]
+                        tx, ty = cx - hw // 2 + x, cy - hh // 2 + y
+                        if c and 0 <= tx < w and 0 <= ty < h:
+                            px[ty * w + tx] = 0xFF000000 | rgb(hp[c % len(hp)])
+        write_bmp(os.path.join(out, 'pic_%s.bmp' % pid), w, h, px)
         n += 1
     pal = amilib.exe_palette(CAR_PAL, 6)
     lines = []
