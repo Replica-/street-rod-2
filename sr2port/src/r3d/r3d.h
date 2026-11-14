@@ -42,6 +42,19 @@ typedef struct {
 } R3dView;
 
 void r3d_view_push(const R3dView *v);
+
+/* The track (race_render.md 1.4: word arrays of segment 3726), copied by r3d when it changes. */
+#define R3D_TRACK_N 0x3DE
+typedef struct {
+    int16_t yaw[R3D_TRACK_N];   /* road heading */
+    int16_t hgt[R3D_TRACK_N];   /* road height */
+    uint16_t l[R3D_TRACK_N];    /* left side flags */
+    uint16_t r[R3D_TRACK_N];    /* right side flags */
+    uint16_t c[R3D_TRACK_N];    /* centre flags: low byte & 0xE0 = road width, & 8 = dash, & 0x10 = white */
+    int16_t bl[R3D_TRACK_N];    /* left bank: > 0 hillside, < 0 drop-off (Mulholland) */
+    int16_t br[R3D_TRACK_N];    /* right bank */
+} R3dTrack;
+void r3d_track_set(const R3dTrack *t);
 /* True while the race code keeps pushing views (3D race view on screen). */
 bool r3d_view_live(void);
 

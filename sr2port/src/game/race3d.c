@@ -70,8 +70,24 @@ static void build_mask(u8 *mask)
     }
 }
 
+static void push_track(void)
+{
+    static R3dTrack t;
+    for (int i = 0; i < R3D_TRACK_N; i++) {
+        t.yaw[i] = TRKS(TRK_YAW, i);
+        t.hgt[i] = TRKS(TRK_HGT, i);
+        t.l[i] = TRKW(TRK_L, i);
+        t.r[i] = TRKW(TRK_R, i);
+        t.c[i] = TRKW(TRK_C, i);
+        t.bl[i] = TRKS(TRK_BL, i);
+        t.br[i] = TRKS(TRK_BR, i);
+    }
+    r3d_track_set(&t);
+}
+
 static void push_view(void)
 {
+    push_track();
     R3dView v;
     v.pos = (float)DSS(DS_seg) + (float)DSS(DS_substep) / 64.0f;
     v.cam_x = (float)DSS(DS_cam_x);
