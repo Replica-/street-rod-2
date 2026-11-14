@@ -7,13 +7,12 @@
 #include <string.h>
 
 #include "opl3.h"
+#include "r3d/r3d.h"
 
 #define AUDIO_RATE 49716          /* PORT: the OPL2 sample rate (14.318 MHz / 288), so Nuked-OPL3 runs unresampled */
 #define SPEAKER_AMPLITUDE 5000
 
 static SDL_Window *window;
-static SDL_Renderer *renderer;
-static SDL_Texture *texture;
 static SDL_AudioStream *audio;
 static SDL_Gamepad *gamepad;
 static char *game_dir;
@@ -57,12 +56,14 @@ bool host_init(const char *dir, int window_scale, bool fullscreen)
     }
     game_dir = SDL_strdup(dir);
     if (window_scale < 1) window_scale = 3;
-    if (!SDL_CreateWindowAndRenderer("Street Rod 2", 320 * window_scale, 240 * window_scale,
-                                     SDL_WINDOW_RESIZABLE, &window, &renderer)) {
-        fprintf(stderr, "window/renderer failed: %s\n", SDL_GetError());
+    window = SDL_CreateWindow("Street Rod 2", 320 * window_scale, 240 * window_scale,
+                              SDL_WINDOW_RESIZABLE | r3d_window_flags());
+    if (!window) window = SDL_CreateWindow("Street Rod 2", 320 * window_scale, 240 * window_scale, SDL_WINDOW_RESIZABLE);
+    if (!window) {
+        fprintf(stderr, "window failed: %s\n", SDL_GetError());
         return false;
     }
-    SDL_SetRenderVSync(renderer, 1);
+    r3d_init(window);                               /* ENHANCED: OpenGL presenter (no context: picture not shown) */
     if (fullscreen) SDL_SetWindowFullscreen(window, true);
     host_set_frame_source(NULL, 320, 200);
 
@@ -87,8 +88,7 @@ void host_shutdown(void)
     if (gamepad) SDL_CloseGamepad(gamepad);
     audio_dump_close();
     if (audio) SDL_DestroyAudioStream(audio);
-    if (texture) SDL_DestroyTexture(texture);
-    if (renderer) SDL_DestroyRenderer(renderer);
+    r3d_shutdown();
     if (window) SDL_DestroyWindow(window);
     SDL_free(game_dir);
     SDL_Quit();
@@ -103,11 +103,7 @@ void host_set_frame_source(bool (*compose)(u32 *), int w, int h)
     frame_source = compose;
     frame_w = SDL_clamp(w, 1, HOST_FRAME_MAX_W);
     frame_h = SDL_clamp(h, 1, HOST_FRAME_MAX_H);
-    /* The 200-line picture fills a 4:3 area, as it did on a VGA monitor. */
-    SDL_SetRenderLogicalPresentation(renderer, VIEW_W(frame_w), VIEW_H(frame_w), SDL_LOGICAL_PRESENTATION_LETTERBOX);
-    if (texture) SDL_DestroyTexture(texture);
-    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, frame_w, frame_h);
-    SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+    /* The 200-line picture fills a 4:3 area, as it did on a VGA monitor (r3d_present letterboxes it). */
 }
 
 static Uint64 tick_due_ns(Uint64 n)
@@ -400,13 +396,7 @@ static void snapshot(void)
 static void present(void)
 {
     snapshot();
-    if (!texture) return;
-    SDL_UpdateTexture(texture, NULL, frame, frame_w * 4);
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-    SDL_RenderClear(renderer);
-    SDL_FRect dst = { 0, 0, (float)VIEW_W(frame_w), (float)VIEW_H(frame_w) };
-    SDL_RenderTexture(renderer, texture, NULL, &dst);
-    SDL_RenderPresent(renderer);
+    r3d_present(frame, frame_w, frame_h);
 }
 
 static Uint64 last_present_ns;
@@ -715,9 +705,17 @@ static void process_events(void)
                     mickey_y += ev.motion.yrel * 2.0f * (float)frame_h / vh;
                 }
             }
-            SDL_ConvertEventToRenderCoordinates(renderer, &ev);
-            mouse_x = ev.motion.x;
-            mouse_y = ev.motion.y;
+            {
+                /* window coordinates -> logical picture units (VIEW_W x VIEW_H), same letterbox as r3d_present */
+                int ww = 0, wh = 0;
+                float lx, ly, lw, lh;
+                SDL_GetWindowSize(window, &ww, &wh);
+                r3d_letterbox((float)ww, (float)wh, &lx, &ly, &lw, &lh);
+                if (lw >= 1 && lh >= 1) {
+                    mouse_x = (ev.motion.x - lx) * (float)VIEW_W(frame_w) / lw;
+                    mouse_y = (ev.motion.y - ly) * (float)VIEW_H(frame_w) / lh;
+                }
+            }
             break;
         case SDL_EVENT_GAMEPAD_ADDED:
             if (!gamepad) gamepad = SDL_OpenGamepad(ev.gdevice.which);

@@ -1,12 +1,12 @@
 # Street Rod 2 Enhanced — plan
 
 ## Status
-Set up 2026-11-14 from the faithful port (`../street-rod-2` at 75326ff). Next: **R1.1**.
+Set up 2026-11-14 from the faithful port (`../street-rod-2` at 75326ff). Next: **R1.2**.
 
 ## User to-do
 | What | Why |
 |---|---|
-| — | — |
+| Play a little in the new OpenGL window: title, garage, a race; resize the window, Alt+Enter, mouse clicks land where the pointer is | R1.1 replaced SDL's renderer; it should look and click exactly as before |
 
 ## Phase R1 — 3D race view
 The race view (front strip (0,18)-(319,101), mirror (240,22)-(319,42), `race_render.md` §1.3) is drawn by a GPU
@@ -15,7 +15,7 @@ renderer instead of the original road routines; the dashboard, cockpit overlay a
 
 | Id | Task | Size | Status |
 |---|---|---|---|
-| R1.1 | Renderer base: SDL3 GPU (or OpenGL 3.3) context in `host.c`; the 320x200 frame becomes a texture drawn over a 3D viewport; `classic` switch keeps the 2D path; frame pacing at display refresh | M | |
+| R1.1 | Renderer base: SDL3 GPU (or OpenGL 3.3) context in `host.c`; the 320x200 frame becomes a texture drawn over a 3D viewport; `classic` switch keeps the 2D path; frame pacing at display refresh | M | done 2026-11-14 (user check pending) |
 | R1.2 | State snapshot + interpolation: capture player seg/substep, lateral position, heading, speed, wheel, opponent / police positions at each physics step (race ISR, every 12th tick); blend the last two by elapsed time each frame | M | |
 | R1.3 | 3D road (modes 0, 1, 0x10): mesh from track arrays YAW/HGT/L/R/C (+BL/BR banks for Mulholland), road surface, lines, shoulders, sky and horizon; camera at the interpolated player position | L | |
 | R1.4 | Sprites: opponent, police, roadside scenery (SR2_SHP shapes and LIB pictures) as billboards placed from the same data the 2D renderer uses | L | |
@@ -42,5 +42,6 @@ renderer instead of the original road routines; the dashboard, cockpit overlay a
 | — | AI-redrawn garage art (Fooocus experiment 2026-11-14, faithful repo `work/fooocus`) | M |
 
 Notes:
+- R1.1: `src/r3d/r3d.c` (OpenGL 3.3 core, GL loaded via SDL_GL_GetProcAddress, frame = BGRA texture, 4:3 letterbox, vsync); `host.c` presents through it and maps the mouse with `r3d_letterbox`; no context (SDL_VIDEO_DRIVER=dummy) = not shown, game runs (smoke tests unchanged); `--classic` parsed in main.c (no effect until R1.3).
 - Why 3D straight away: the 2D renderer only gets ~6 position updates a second (physics every 12th tick, frames every
   8 ticks), so smoothness needs interpolation either way; doing it in 3D also makes rain and effects possible.
