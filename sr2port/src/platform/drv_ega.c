@@ -452,6 +452,7 @@ s16 ega_sprite_over_bg(FarPtr spr, FarPtr dst, FarPtr bg, const Tail *t, const R
         ax = (u16)(0x28 * hmain);
         dp.off = (u16)(dp.off + ax);
         ega_latch_copy_to40(tsrc, c.w, trows, dp, (s16)sstr);
+        amiga_sprite_tails(dst, trows);                            /* ENHANCED: --amiga */
         if (c.w >= 1) ax = (u16)(c.w & 0xFF00);                    /* AX left by 24e7:008b */
     }
     return (s16)ax;

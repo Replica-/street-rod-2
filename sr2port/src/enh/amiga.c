@@ -2,8 +2,9 @@
  *
  * The pictures are one folder of ready files, gfx/ next to the executable (or in the working directory), made by
  * tools/amiga_export.py (game data, never committed):
- *   pic_<id>.bmp            picture <id>: 32-bit = a full-colour version (the Amiga's), drawn instead of the game's;
- *                           8-bit = the game's own picture (no full-colour version), drawn as the game draws it
+ *   pic_<id>.bmp            picture <id>: 32-bit = a full-colour version (the Amiga's), drawn instead of the game's
+ *                           (alpha 0 = hidden: what is there stays); 8-bit = the game's own picture (no full-colour
+ *                           version), drawn as the game draws it
  *   car_<m>.bmp             the body of car model m: alpha 0 = see-through, 254 = paint, 255 = other
  *   car_<m>_<piece>.bmp     roof / rbump / fbump: chopped roof, stripped bumpers (same coding)
  *   cars.txt                where each piece goes on its body
@@ -424,7 +425,9 @@ static u32 src_px(const Src *s, int x, int y)
     case SRC_BLOCK:
         return (u32)x < s->stride * 8 && y < (int)desc_h(s->bmp) ? s->block[(u32)y * s->stride * 8 + (u32)x] : SH_GAME;
     case SRC_PIC:
-        return x < s->img->w && y < s->img->h ? SH_RGB | (s->img->px[y * s->img->w + x] & 0xFFFFFF) : SH_GAME;
+        if (x >= s->img->w || y >= s->img->h) return SH_GAME;
+        if (!(s->img->px[y * s->img->w + x] >> 24)) return SH_KEEP;   /* see-through: the picture is hidden there */
+        return SH_RGB | (s->img->px[y * s->img->w + x] & 0xFFFFFF);
     default:
         return SH_GAME;
     }
@@ -481,7 +484,8 @@ void amiga_blit_end(FarPtr src, FarPtr dst, const Rect *r)
         for (int x = 0; x < blit.c.w * 8; x++) {
             int dx = blit.c.dx * 8 + x, dy = blit.c.dy + j, sx = blit.c.sx * 8 + x, sy = blit.c.sy + j;
             if (dx >= W || dy >= h || src_clear(&blit.src, sx, sy)) continue;
-            px[dy * W + dx] = src_px(&blit.src, sx, sy);
+            u32 v = src_px(&blit.src, sx, sy);
+            if (v != SH_KEEP) px[dy * W + dx] = v;
         }
     FarPtr pl = desc_planes(dst);
     sh_block_set(pl.seg, pl.off, st, h, px);
@@ -520,23 +524,39 @@ void amiga_sprite_begin(FarPtr spr, FarPtr dst, FarPtr bg, const Rect *c, u16 bg
 
 void amiga_sprite_end(void) { sh_end(); }
 
+void amiga_sprite_tails(FarPtr dst, s16 rows)
+{
+    if (!on || !is_vram(dst) || !sprite.bgstr) return;
+    u32 st = desc_stride(dst), base = vram_base(dst);
+    u32 *px = sh_pixels();
+    for (int j = sprite.rows; j < sprite.rows + rows; j++)
+        for (int i = 0; i < sprite.c.w; i++)
+            for (int k = 0; k < 8; k++) {
+                u32 o = (base + (u32)(sprite.c.dy + j) * st + (u32)(sprite.c.dx + i)) & 0xFFFFu;
+                if (px[o * 8 + (u32)k] != SH_THROUGH) continue;
+                u32 rel = (u32)sprite.bgrel + (u32)j * sprite.bgstr + (u32)i;
+                px[o * 8 + (u32)k] = src_px(&sprite.bg, (int)(rel % sprite.bgstr) * 8 + k, (int)(rel / sprite.bgstr));
+            }
+}
+
 /* ---------------------------------------------------------------- car strips cached in VRAM */
 
-static struct { Src frame; int frow0; } cache;
+static struct { Src frame; int frow0; bool plain; } cache;   /* plain: the background a fill */
 
 static u32 cache_fn(void *user, int x, int y)
 {
     (void)user;
     int fy = cache.frow0 + y;
-    if (src_clear(&cache.frame, x, fy)) return SH_KEEP;
+    if (src_clear(&cache.frame, x, fy)) return cache.plain ? SH_THROUGH : SH_KEEP;
     return src_px(&cache.frame, x, fy);
 }
 
-void amiga_cache_begin(FarPtr frame, FarPtr tp, u16 stride, s16 rows, s16 frow0)
+void amiga_cache_begin(FarPtr frame, FarPtr tp, u16 stride, s16 rows, s16 frow0, bool plain)
 {
     if (!on || tp.seg < 0xA000) return;
     src_resolve(&cache.frame, frame, true);
     cache.frow0 = frow0;
+    cache.plain = plain;
     sh_begin(((u32)(tp.seg - 0xA000) * 16u + tp.off) & 0xFFFFu, stride, stride * 8, rows, cache_fn, NULL);
 }
 

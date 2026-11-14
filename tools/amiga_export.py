@@ -6,7 +6,7 @@ tools/unadf.py) and writes OUT (default gfx, next to the executable in a package
   pic_<id>.bmp      every picture the game draws, by its id (LIB1 #i = i + 1, LIB2 #i = 1000 + i, LIB3 #i = 2000 + i):
                     the Amiga version where there is one (tools/amiga_map.h; 32-bit, full colour with its palette
                     table, same size as the PC picture), else the PC picture (8-bit, the game's colour indices with
-                    the default palette; the game draws it in its own colours)
+                    the default palette; the game draws it in its own colours); HIDE: 32-bit see-through (not shown)
   car_<m>.bmp       the Amiga body of car model m (0..21), alpha 0 = see-through (Amiga colour 0, as the Amiga draws
                     its cars: the background and the windows), 254 = paint (recoloured to the car's paint at run
                     time, keeping its brightness), 255 = other
@@ -35,6 +35,8 @@ WHEELS = [137, 135, 136]
 PAINT = set(range(1, 10)) | set(range(33, 42))     # table 7: the red ramp 810..F98 and its half-bright copies
 # PC pictures that are part of a full Amiga screen: the PC id -> (x, y, w, h) cut from the Amiga picture
 CROP = {3: (40, 40, 256, 97)}                       # the California Dreams logo, drawn at (40, 40) on the PC
+# PC pictures drawn over an Amiga picture that already shows them: written see-through (hidden, what is there stays)
+HIDE = {1149}                                      # Burger's Bungalow: the man by the door (the Amiga picture has him)
 
 
 def write_bmp(path, w, h, argb):
@@ -134,6 +136,10 @@ def main():
     for lib, base in (('LIB1', 1), ('LIB2', 1000), ('LIB3', 2000)):     # the PC pictures without an Amiga version
         for p in srlib.read_lib(os.path.join(ROOT, 'Game', lib)):
             pid = base + p['index']
+            if pid in HIDE:
+                write_bmp(os.path.join(out, 'pic_%d.bmp' % pid), p['w'], p['h'], [0] * (p['w'] * p['h']))
+                n += 1
+                continue
             if pid in have or p['w'] <= 0 or p['h'] <= 0:
                 continue
             idx = srlib.to_indices(p, srlib.unpack(p['data'], p['tokens'], p['raw'], p['sr2']))

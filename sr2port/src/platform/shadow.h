@@ -18,6 +18,9 @@
 #define SH_GAME 0u                   /* the game's colour */
 #define SH_KEEP 1u                   /* (a source's answer) the pixel stays as it is */
 #define SH_NONE 2u                   /* (a source's answer) not the source's pixel: the usual rule */
+/* see-through: the car strip cache's plain background (the game assumes a plain road); shown as the game's colour,
+ * replaced by the real background where the strip lands (amiga_sprite_tails) */
+#define SH_THROUGH 3u
 #define SH_RGB 0xFF000000u           /* | 0xRRGGBB */
 /* | the Amiga shading 0xRRGGBB: a car's paint, recoloured to palette register reg (hue, saturation) when shown */
 #define SH_PAINT(reg) (0x80000000u | (u32)((reg) & 15) << 24)

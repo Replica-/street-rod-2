@@ -92,7 +92,7 @@ static bool compose(u32 *xrgb)
                 u32 px = rgb[c];
                 if (sh) {
                     u32 v = sh[(u32)o * 8 + (u32)(7 - bit)];
-                    if (v != SH_GAME && !blanked[c]) px = sh_colour(v, rgb);
+                    if (v > SH_THROUGH) px = sh_colour(v, rgb);
                 }
                 if (m && m[b * 8 + 7 - bit] && (!fill_only || c == 15)) px &= 0x00FFFFFFu;
                 *out++ = px;

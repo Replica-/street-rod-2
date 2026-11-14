@@ -65,7 +65,7 @@ static void ega_vram_cache_strips(u16 tails, const FarPtr *frames, s16 n, s16 yo
         }
         s16 s = (s16)desc_stride(fr);
         u16 off = (u16)(DSS((u16)(t + 4)) * s);
-        amiga_cache_begin(fr, tp, (u16)s, rows, DSS((u16)(t + 4)));   /* ENHANCED: --amiga, the full-colour car */
+        amiga_cache_begin(fr, tp, (u16)s, rows, DSS((u16)(t + 4)), far_is_null(bg));   /* ENHANCED: --amiga */
         ega_blit_4planes(planes_plus(fr, off), tp, (u16)(desc_mask(fr).off + off), s, rows, s, (u16)(desc_h(fr) * s));
         amiga_cache_end();
     }

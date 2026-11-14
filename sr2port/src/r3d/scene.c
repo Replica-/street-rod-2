@@ -23,6 +23,7 @@
 #define YAW_RAD (1.0f / FOCAL)
 #define HGT_UNIT 30.0f
 #define X_MID 2400.0f                           /* lateral reference: the road centre 0x960 */
+#define HOUSE_DEPTH 500.0f                      /* ENHANCED: how far the town houses reach back (the 2D view shows fronts only) */
 #define DRAW_SEGS 160
 #define FAR_X 16000.0f
 
@@ -493,6 +494,23 @@ static void build(int first, int last, int mode)
         } else if (mul && !(c & 0x80)) {                       /* kerbs / rails */
             band(p0, p1, sl, xl, 0, 0, 0, 0, PC(2));
             band(p0, p1, xr, sr, 0, 0, 0, 0, PC(2));
+        }
+        if (mode == 0 && !(c & 4)) {                           /* town houses (town_walls_front 4c1c) */
+            for (int side = 0; side < 2; side++) {
+                unsigned F = side ? trk.r[i] : trk.l[i], Fm1 = i > 0 ? (side ? trk.r[i - 1] : trk.l[i - 1]) : 0;
+                unsigned Fp1 = i + 1 < R3D_TRACK_N ? (side ? trk.r[i + 1] : trk.l[i + 1]) : 0;
+                float face = side ? sr : sl, back = side ? sr + HOUSE_DEPTH : sl - HOUSE_DEPTH;
+                float X0 = side ? face : back, X1 = side ? back : face;   /* X0 < X1 */
+                float wall = 100, top = (F & 4) ? wall + ((F & 8) ? 100 : 50) : wall;
+                int wc = (F & 0x10) ? 2 : 3;
+                band(p0, p1, face, face, 0, wall, 0, wall, PC(wc));          /* the front, facing the road */
+                if (F & 4) band(p0, p1, face, face, wall, top, wall, top, PC(4));   /* the storey */
+                band(p0, p1, X0, X1, top, top, top, top, PC(F & 4 ? 4 : wc));      /* the roof */
+                if (!(Fm1 & 4) || (F & 4) != (Fm1 & 4))                     /* the near end of a row */
+                    band(p0, p0, X0, X1, 0, 0, top, top, PC(2));
+                if (i + 1 < R3D_TRACK_N && (Fp1 & 4) != (F & 4))           /* the far end */
+                    band(p1, p1, X0, X1, 0, 0, top, top, PC(2));
+            }
         }
         if (c & 8) band(p0, p1 - 0.5f, X_MID - 20, X_MID + 20, 3, 3, 3, 3, PC(4));     /* centre dash */
         if (trk.wall_phase >= 0) {                             /* drag strip barrier walls (597e), 50 high */
