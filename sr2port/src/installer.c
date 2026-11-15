@@ -304,6 +304,25 @@ bool installer_run(const char *game_dir, bool want_amiga)
     if (!need_pc && !need_amiga) return true;              /* (disks there, no gfx/: the game makes it) */
 
     if (!SDL_Init(SDL_INIT_VIDEO)) return true;          /* no window: let the game report the missing files */
+
+    /* ask first: nothing is downloaded without a yes */
+    char msg[1024];
+    SDL_snprintf(msg, sizeof msg,
+                 "The Street Rod 2 game files were not found in the game folder:\n%s\n\n"
+                 "Download them now from Street Rod Online (www.streetrodonline.com)?\n\n%s%s"
+                 "The files are checked (MD5) and unpacked into the game folder; then the game starts.",
+                 dir, need_pc ? "  - the PC release (sr2pc.zip, about 0.7 MB)\n" : "",
+                 need_amiga ? "  - the Amiga disks for the Amiga graphics (sr2amiga.zip, about 1 MB)\n\n" : "\n");
+    const SDL_MessageBoxButtonData buttons[] = {
+        { SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Download" },
+        { SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Cancel" },
+    };
+    const SDL_MessageBoxData box = { SDL_MESSAGEBOX_INFORMATION, NULL, "Street Rod 2 - Setup", msg,
+                                     (int)SDL_arraysize(buttons), buttons, NULL };
+    int choice = 0;
+    if (getenv("SR_SETUP_YES")) choice = 1;              /* developer aid: unattended test runs */
+    else if (!SDL_ShowMessageBox(&box, &choice)) choice = 0;
+    if (choice != 1) return false;
     SDL_Window *w = NULL;
     SDL_Renderer *r = NULL;
     if (!SDL_CreateWindowAndRenderer("Street Rod 2 - Setup", 640, 360, 0, &w, &r)) return true;
