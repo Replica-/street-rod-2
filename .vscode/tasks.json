@@ -12,6 +12,19 @@
             "problemMatcher": ["$gcc"]
         },
         {
+            "label": "recording: prepare",
+            "type": "shell",
+            "command": "New-Item -ItemType Directory -Force work/recording | Out-Null; Remove-Item -ErrorAction SilentlyContinue work/recording/raw.mp4, work/recording/raw.wav",
+            "dependsOn": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "recording: finish",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/record_finish.ps1",
+            "problemMatcher": []
+        },
+        {
             "label": "build debug",
             "type": "shell",
             "command": "if (-not (Test-Path sr2port/build-debug/build.ninja)) { cmake -S sr2port -B sr2port/build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc }; cmake --build sr2port/build-debug",

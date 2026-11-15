@@ -2,6 +2,24 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Record video (play, then close the game)",
+            "type": "cppdbg",
+            "request": "launch",
+            "preLaunchTask": "recording: prepare",
+            "postDebugTask": "recording: finish",
+            "program": "${workspaceFolder}/sr2port/build/sr2port.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                { "name": "PATH", "value": "C:\\msys64\\ucrt64\\bin;${env:PATH}" },
+                { "name": "SR_VIDEO", "value": "${workspaceFolder}/work/recording/raw.mp4" },
+                { "name": "SR_AUDIO_WAV", "value": "${workspaceFolder}/work/recording/raw.wav" }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe"
+        },
+        {
             "name": "Run 3D",
             "type": "cppdbg",
             "request": "launch",
