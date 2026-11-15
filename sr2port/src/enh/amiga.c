@@ -65,6 +65,18 @@ static struct { int x, y; bool has; } piece_at[22][PIECES];
 
 bool amiga_active(void) { return on; }
 
+bool amiga_gfx_present(void)
+{
+    const char *bases[2] = { SDL_GetBasePath(), "." };
+    for (int i = 0; i < 2; i++) {
+        if (!bases[i]) continue;
+        char path[1200];
+        SDL_snprintf(path, sizeof path, "%s%sgfx/cars.txt", bases[i], i == 1 ? "/" : "");
+        if (SDL_GetPathInfo(path, NULL)) return true;
+    }
+    return false;
+}
+
 bool amiga_init(bool enable)
 {
     on = false;

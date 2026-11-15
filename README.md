@@ -24,7 +24,7 @@ Status and plan: [PLAN.md](PLAN.md) (as a page: `python tools/plan_site.py`, the
 
 ## Screenshots
 
-With the Amiga graphics (`--amiga`) and the 3D race view:
+With the Amiga graphics and the 3D race view (both the default):
 
 | | |
 |---|---|
@@ -37,10 +37,14 @@ With the Amiga graphics (`--amiga`) and the 3D race view:
 
 ## Running
 
-Download: [v0.1.0 for Windows x64](https://github.com/kylofon/street-rod-2-sdl3/releases/tag/v0.1.0) (needs your own copy of the game).
+Download: [v0.1.0 for Windows x64](https://github.com/kylofon/street-rod-2-sdl3/releases/tag/v0.1.0).
 
+**First start:** when the game folder (`Game\`) does not hold the game's files, a setup window downloads the PC
+release and the Amiga disks from [Street Rod Online](https://www.streetrodonline.com/), unpacks them there with a
+progress bar, makes the Amiga picture set (`gfx\`) and starts the game. When the files are there it goes straight
+into the game. Nothing else to install (no Python).
 
-Build (MSYS2 mingw64, see `sr2port/PORTING.md`), put the installed game in `Game\`, then either start
+Build (MSYS2 mingw64, see `sr2port/PORTING.md`), then either start
 the launcher, **`Street Rod 2.exe`** (built beside `sr2port.exe` when wxWidgets 3.2 is installed: game folder,
 graphics, sound AdLib / Normal, the game's switches, window size, full screen), or run the port directly:
 
@@ -58,17 +62,17 @@ fallback (`--classic`):
   overhead signs, 4x anti-aliasing. `--classic` brings back the original 2D view; `--rain`, `--dusk` and
   `--night` add weather and time of day.
 - **Smooth 2D animation**: the game's screen refresh follows the display (no judder on 60 / 120 Hz screens).
-- **Amiga graphics** (`--amiga`, WIP): the Amiga release's art in full colour: title, garage, gas station,
+- **Amiga graphics** (the default; `--pc` for the PC pictures, WIP): the Amiga release's art in full colour: title, garage, gas station,
   Burger's Bungalow, newspaper, engine screens, portraits, the cars (Amiga bodies, customisation pieces
   and turning wheels, repainted in the car's colour) and the race dashboards (the driver's hands turning
   the wheel). The paint job adds a swatch of 20 colours; the colours chosen are kept beside the saved game
   (`HOTROD<n>.SAV.paint`), the save itself stays the original's. The game draws its 16-colour screen as
   always; a full-colour copy of the video memory is kept in step with every drawing step and shown instead.
   Pictures without an Amiga version stay the PC ones (car underside, tyre-change tyres).
-  The art comes from **your own** Amiga disks: put the `.adf` files in `Game\`, extract them with
-  `python tools/unadf.py`, then run `python tools/amiga_export.py`. It writes one `gfx\` folder (every
-  picture by id, Amiga where there is one, else PC; cars, wheels) that the game reads; nothing is converted
-  while playing. `gfx\` is game art and is not in git.
+  The art comes from the Amiga disks in `Game\` (`SR2AMIGA_DISK1.adf`, `SR2AMIGA_DISK2.adf`, fetched by the
+  first-start setup): when there is no `gfx\` folder the game makes it once, next to the executable (every
+  picture by id, Amiga where there is one, else PC; cars, wheels); nothing is converted while playing.
+  `python tools/amiga_export.py` makes the same folder. `gfx\` is game art and is not in git.
 - **Music** (AdLib): the playlist's songs follow each other without the original's ~2 minute silence, and
   the garage juke box opens a menu: "Squelch it !" / "Catch some tunes" or pick one of the six songs
   (including `MSR20.MUS`, which the game never plays). `--classic` keeps the original's on / off toggle.

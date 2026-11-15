@@ -7,7 +7,8 @@
  *   --classic     ENHANCED: the original 2D race view instead of the 3D one
  *   --rain        ENHANCED: rain in the 3D race view
  *   --protection  show the copy protection question (skipped by default; it accepts any answer)
- *   --amiga       ENHANCED: the Amiga release's pictures where they exist (garage), from Game/amiga
+ *   --amiga       ENHANCED (the default): the Amiga release's pictures where they exist, from gfx/ (made at the
+ *                 first start from the Amiga disks, enh/amiga_export.c); --pc keeps the PC pictures
  *   --dusk, --night  ENHANCED: time of day in the 3D race view (night: headlights)
  *   --check       load and verify the original executable, print a summary and exit (no window)
  *   --run-ms N    developer aid: exit after N ms (headless snapshot runs)
@@ -22,6 +23,8 @@
 #include <string.h>
 
 #include "game/game.h"
+#include "installer.h"
+#include "enh/amiga_export.h"
 #include "r3d/r3d.h"
 #include "enh/amiga.h"
 #include "host.h"
@@ -30,7 +33,7 @@
 
 static int usage(const char *prog)
 {
-    fprintf(stderr, "usage: %s [--game-dir DIR] [--scale N] [--fullscreen] [--classic] [--amiga] [--protection] [--rain] [--dusk|--night] [--check] [--run-ms N] "
+    fprintf(stderr, "usage: %s [--game-dir DIR] [--scale N] [--fullscreen] [--classic] [--pc] [--protection] [--rain] [--dusk|--night] [--check] [--run-ms N] "
                     "[1] [nomouse] [demo] [nouemem] [e|c|v|h|t]\n", prog);
     return 2;
 }
@@ -53,7 +56,7 @@ int main(int argc, char **argv)
     int game_argc = 0;
     game_argv[game_argc++] = argv[0];
     int scale = 3;
-    bool check = false, fullscreen = false, want_amiga = false;
+    bool check = false, fullscreen = false, want_amiga = true;
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
         if (!strcmp(a, "--game-dir") && v) { dir = v; i++; }
@@ -63,13 +66,16 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--classic")) r3d_set_classic(true);      /* ENHANCED */
         else if (!strcmp(a, "--rain")) r3d_set_rain(true);            /* ENHANCED */
         else if (!strcmp(a, "--protection")) game_show_protection = true;   /* PORT: user decision */
-        else if (!strcmp(a, "--amiga")) want_amiga = true;           /* ENHANCED */
+        else if (!strcmp(a, "--amiga")) want_amiga = true;           /* ENHANCED (the default) */
+        else if (!strcmp(a, "--pc")) want_amiga = false;             /* ENHANCED: the PC pictures */
         else if (!strcmp(a, "--dusk")) r3d_set_time_of_day(1);        /* ENHANCED */
         else if (!strcmp(a, "--night")) r3d_set_time_of_day(2);       /* ENHANCED */
         else if (!strcmp(a, "--check")) check = true;
         else if (a[0] == '-' && a[1] == '-') return usage(argv[0]);
         else if (game_argc < 63) game_argv[game_argc++] = argv[i];   /* a switch of SR.EXE */
     }
+
+    if (!check && !installer_run(dir, want_amiga)) return 1;   /* PORT: first start: download the game files */
 
     char exe_path[1024], err[256];
     find_exe(dir, exe_path, sizeof exe_path);
@@ -84,6 +90,11 @@ int main(int argc, char **argv)
     }
 
     if (!host_init(dir, scale, fullscreen)) return 1;
+    if (want_amiga && !amiga_gfx_present()) {     /* ENHANCED: first start: the Amiga picture set from the disks */
+        char gfx[1100], why[256];
+        SDL_snprintf(gfx, sizeof gfx, "%sgfx", SDL_GetBasePath() ? SDL_GetBasePath() : "./");
+        if (!amiga_export_run(dir, gfx, why, sizeof why)) fprintf(stderr, "amiga: no picture set: %s\n", why);
+    }
     amiga_init(want_amiga);                       /* ENHANCED: --amiga */
     ega_init();                     /* 16-colour planar display: frame source, planes */
     game_argv[game_argc] = NULL;

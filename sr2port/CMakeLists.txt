@@ -17,7 +17,11 @@ target_include_directories(nuked_opl3 PUBLIC third_party/nuked-opl3)
 
 add_executable(sr2port ${SR_SOURCES})
 target_include_directories(sr2port PRIVATE src)
-target_link_libraries(sr2port PRIVATE SDL3::SDL3 nuked_opl3)
+find_package(ZLIB REQUIRED)
+target_link_libraries(sr2port PRIVATE SDL3::SDL3 nuked_opl3 ZLIB::ZLIB)
+if(WIN32)
+    target_link_libraries(sr2port PRIVATE wininet)      # the installer's download
+endif()
 target_compile_definitions(sr2port PRIVATE SR2PORT_VERSION="${SR2PORT_VERSION}")
 if(MSVC)
     target_compile_options(sr2port PRIVATE /W3)
