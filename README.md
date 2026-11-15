@@ -37,7 +37,7 @@ With the Amiga graphics and the 3D race view (both the default):
 
 ## Running
 
-Download: [v0.1.0 for Windows x64](https://github.com/kylofon/street-rod-2-sdl3/releases/tag/v0.1.0).
+Download: [the latest release for Windows x64](../../releases/latest) (unzip, start `Street Rod 2.exe`).
 
 **First start:** when the game folder (`Game\`) does not hold the game's files, a setup window downloads the PC
 release and the Amiga disks from [Street Rod Online](https://www.streetrodonline.com/), unpacks them there with a
