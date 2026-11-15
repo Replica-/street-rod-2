@@ -1,5 +1,6 @@
 /* game_flow: player objects, checks and the new-game set-up — port/spec/game_flow.md, garage.md
  * (0001:3e08-4250, 0001:0e94, 0001:51f8-550e, 0001:68e2). Delta port of SR1 flow_state.c. */
+#include "enh/amiga.h"
 #include "game/flow.h"
 #include "game/race.h"
 
@@ -165,6 +166,7 @@ void opponents_init(void)
 void new_game(void)
 {
     pools_init(1);
+    amiga_paint_reset();                              /* ENHANCED (--amiga): no swatch colours yet */
     DSSL(DS_money) = (s32)DSW(DS_demo) * 40000 + 0x4B0;       /* $1200; demo $41200 (SR1 $750 / $10000) */
     DSB(DS_skill_b) = 1;
     DSB(DS_skill_a) = 1;

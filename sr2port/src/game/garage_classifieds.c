@@ -3,6 +3,7 @@
  * DS:9B40 (game_flow saves it). cheapest_ad_price 0001:0e94 and hotspots_reset 0001:0e74 are game_flow's / the UI
  * slice's. */
 #include "game/garage.h"
+#include "enh/amiga.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -285,6 +286,7 @@ static void see_it_preview(s16 m)
     scheme_colours(0x37);
     s16 colour = (s8)model_b6(m);                   /* the fixed preview colour rolled when SR2_DATA was loaded */
     set_paint_palette(colour);
+    if (amiga_active()) amiga_paint_preview(0, colour);   /* ENHANCED (--amiga): the ad's car in the game's colour */
     bool ega = DSS(DS_driver_id) == -2 || DSS(DS_driver_id) == -6;
     s16 bgcol;
     if (ega) {

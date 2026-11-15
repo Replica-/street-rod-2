@@ -1,6 +1,7 @@
 /* Garage: the car and part data model (garage.md "Records", 0001:426c - 4852, 70d2 - 71be, 7a44). The pools and
  * part_alloc / car_alloc / part_free / car_release are game_flow's (flow.h). Records are u16 DS offsets. */
 #include "game/garage.h"
+#include "enh/amiga.h"
 
 #include "game/flow.h"
 #include "game/ds_shop.h"
@@ -46,6 +47,7 @@ u16 car_new(s16 model, s16 value, u16 reuse)
         if (col != 5) break;
     } while (rnd(2) != 1);
     DSB((u16)(c + CR_COLOUR)) = (u8)col;
+    if (amiga_active()) amiga_paint_set(c, col, 0);   /* ENHANCED (--amiga): a new car: no swatch colour from the last one */
     DSB((u16)(c + CR_ENGINE_LINK)) = 1;
     DSB((u16)(c + CR_IGNITION)) = (u8)(rnd(9) - 5);
 

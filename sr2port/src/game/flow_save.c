@@ -8,6 +8,7 @@
  * records, one more following while +06 != 0. Pointer values are written as they are in mem[] (their only meaning in
  * the file is zero / non-zero), so files are byte-identical to the original's for the same state, and a loaded game lands
  * at the same DGROUP addresses (pools reset, records allocated in file order). */
+#include "enh/amiga.h"
 #include "game/flow.h"
 #include "game/race.h"
 
@@ -184,6 +185,7 @@ s16 load_game_screen(void)
             rd_ok(fd, DS_game_clock, 4) && rd_ok(fd, FLOW_STK_ELAPSED, 4) &&
             rd_ok(fd, DS_road_param, 2) && rd_ok(fd, DS_garage_block, 0x80)) {
             dos_close(fd);
+            amiga_paint_load(ds_str(name));            /* ENHANCED (--amiga): the swatch colours of this game */
             if (DSW(DS_cur_car)) set_paint_palette((s16)(s8)DSB((u16)(DSW(DS_cur_car) + CR_COLOUR)));
             track_build_all(0);                        /* regenerate the road from the saved seed DS:A9F8 */
             track_build_course(DSS(DS_road_param));
@@ -295,6 +297,7 @@ void save_game_screen(void)
                  wr_ok(fd, DS_game_clock, 4) && wr_ok(fd, FLOW_STK_ELAPSED, 4) &&
                  wr_ok(fd, DS_road_param, 2) && wr_ok(fd, DS_garage_block, 0x80)) {
             dos_close(fd);
+            amiga_paint_save(ds_str(name));            /* ENHANCED (--amiga): the swatch colours, beside the save */
             cursor_ctl(-2);
             return;
         }

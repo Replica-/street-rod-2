@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "game/records.h"
 #include "host.h"
 #include "platform/ega.h"
 #include "platform/shadow.h"
@@ -674,27 +675,91 @@ int amiga_swatch_hit(int x, int y)
 
 u32 amiga_swatch_rgb(int i) { return i >= 0 && i < AMIGA_SWATCH_N ? swatch[i] : 0; }
 
-/* the swatch colours chosen, per car record (DGROUP offset), with the game's own colour index then: a record that
- * has a different colour now (another save loaded) is not used. Kept in paint.cfg beside the gfx folder. */
+/* the swatch colours chosen, per car record (DGROUP offset), with its model and the game's own colour index then: a
+ * record that holds another car now or has another colour is not used. Kept with the saved game: beside HOTROD<n>.SAV,
+ * HOTROD<n>.SAV.paint, a line per car "<place> <model> <index> <rrggbb>" (place: 0 the current car, 1.. the car list,
+ * in the save's order); the save itself stays the game's own. */
 #define PAINT_MAX 32
-static struct { u16 car; int index; u32 rgb; } paint[PAINT_MAX];
+#define PAINT_EXT ".paint"
+static struct { u16 car; int model, index; u32 rgb; } paint[PAINT_MAX];
 static int npaint;
-static bool paint_loaded;
 
-static void paint_path(char *out, size_t n) { SDL_snprintf(out, n, "%s/../paint.cfg", dir); }
-
-static void paint_load(void)
+void amiga_paint_set(u16 car, int index, u32 rgb)
 {
-    if (paint_loaded) return;
-    paint_loaded = true;
-    char path[1200];
-    paint_path(path, sizeof path);
+    if (!on) return;
+    int k = 0;
+    for (int i = 0; i < npaint; i++)
+        if (paint[i].car != car) paint[k++] = paint[i];
+    npaint = k;
+    if (rgb && npaint < PAINT_MAX) {
+        paint[npaint].car = car;
+        paint[npaint].model = (s16)DSW((u16)(car + CR_MODEL));
+        paint[npaint].index = index;
+        paint[npaint].rgb = rgb;
+        npaint++;
+    }
+}
+
+void amiga_paint_reset(void) { npaint = 0; }
+
+/* the car record at place n of the save's order (0 the current car, then the car list), or 0 */
+static u16 car_at(int n)
+{
+    if (n == 0) return DSW(DS_cur_car);
+    u16 c = DSW(DS_car_list);
+    for (int k = 1; c && k < n; k++) c = DSW((u16)(c + CR_NEXT));
+    return c;
+}
+
+/* the host path of the supplement of saved game save_name (a DOS name: drive and path parts ignored, as dos.c) */
+static char *paint_file(const char *save_name, bool create)
+{
+    const char *b = save_name;
+    for (const char *q = save_name; *q; q++)
+        if (*q == ':' || *q == '\\' || *q == '/') b = q + 1;
+    char name[64];
+    SDL_snprintf(name, sizeof name, "%s" PAINT_EXT, b);
+    return host_game_path(name, create);
+}
+
+void amiga_paint_save(const char *save_name)
+{
+    if (!on) return;
+    char *path = paint_file(save_name, true);
+    if (!path) return;
+    FILE *f = NULL;
+    for (int n = 0; n < 64; n++) {
+        u16 c = car_at(n);
+        if (!c) { if (n) break; continue; }
+        for (int i = 0; i < npaint; i++)
+            if (paint[i].car == c && paint[i].model == (s16)DSW((u16)(c + CR_MODEL))) {
+                if (!f && !(f = fopen(path, "w"))) { host_free(path); return; }
+                fprintf(f, "%d %d %d %06x\n", n, paint[i].model, paint[i].index, (unsigned)paint[i].rgb);
+            }
+    }
+    if (f) fclose(f);
+    else remove(path);                                        /* no swatch colours: none left from an older save */
+    host_free(path);
+}
+
+void amiga_paint_load(const char *save_name)
+{
+    npaint = 0;
+    if (!on) return;
+    char *path = paint_file(save_name, false);
+    if (!path) return;
     FILE *f = fopen(path, "r");
+    host_free(path);
     if (!f) return;
-    unsigned car, rgb;
-    int index;
-    while (npaint < PAINT_MAX && fscanf(f, "%x %d %x", &car, &index, &rgb) == 3) {
-        paint[npaint].car = (u16)car;
+    char line[128];
+    while (npaint < PAINT_MAX && fgets(line, sizeof line, f)) {
+        int n, model, index;
+        unsigned rgb;
+        if (sscanf(line, "%d %d %d %x", &n, &model, &index, &rgb) != 4) continue;
+        u16 c = car_at(n);
+        if (!c || (s16)DSW((u16)(c + CR_MODEL)) != model) continue;
+        paint[npaint].car = c;
+        paint[npaint].model = model;
         paint[npaint].index = index;
         paint[npaint].rgb = rgb;
         npaint++;
@@ -702,30 +767,13 @@ static void paint_load(void)
     fclose(f);
 }
 
-void amiga_paint_set(u16 car, int index, u32 rgb)
-{
-    if (!on) return;
-    paint_load();
-    int k = 0;
-    for (int i = 0; i < npaint; i++)
-        if (paint[i].car != car) paint[k++] = paint[i];
-    npaint = k;
-    if (rgb && npaint < PAINT_MAX) { paint[npaint].car = car; paint[npaint].index = index; paint[npaint].rgb = rgb; npaint++; }
-    char path[1200];
-    paint_path(path, sizeof path);
-    FILE *f = fopen(path, "w");
-    if (!f) return;
-    for (int i = 0; i < npaint; i++) fprintf(f, "%04x %d %06x\n", paint[i].car, paint[i].index, paint[i].rgb);
-    fclose(f);
-}
-
 void amiga_paint_apply(u16 car, int index)
 {
     u32 rgb = 0;
     if (on) {
-        paint_load();
         for (int i = 0; i < npaint; i++)
-            if (paint[i].car == car && paint[i].index == index) rgb = paint[i].rgb;
+            if (paint[i].car == car && paint[i].model == (s16)DSW((u16)(car + CR_MODEL)) && paint[i].index == index)
+                rgb = paint[i].rgb;
     }
     amiga_paint_preview(rgb, index);
 }

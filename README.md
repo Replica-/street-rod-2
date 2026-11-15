@@ -33,10 +33,12 @@ fallback (`--classic`):
   `--night` add weather and time of day.
 - **Smooth 2D animation**: the game's screen refresh follows the display (no judder on 60 / 120 Hz screens).
 - **Amiga graphics** (`--amiga`, WIP): the Amiga release's art in full colour: title, garage, gas station,
-  Burger's Bungalow, newspaper, engine screens, portraits, and the cars (Amiga bodies, customisation pieces
-  and turning wheels, repainted in the car's colour). The game draws its 16-colour screen as always; a
-  full-colour copy of the video memory is kept in step with every drawing step and shown instead. Pictures
-  without an Amiga version stay the PC ones (race dashboards, car underside, tyre-change tyres).
+  Burger's Bungalow, newspaper, engine screens, portraits, the cars (Amiga bodies, customisation pieces
+  and turning wheels, repainted in the car's colour) and the race dashboards (the driver's hands turning
+  the wheel). The paint job adds a swatch of 20 colours; the colours chosen are kept beside the saved game
+  (`HOTROD<n>.SAV.paint`), the save itself stays the original's. The game draws its 16-colour screen as
+  always; a full-colour copy of the video memory is kept in step with every drawing step and shown instead.
+  Pictures without an Amiga version stay the PC ones (car underside, tyre-change tyres).
   The art comes from **your own** Amiga disks: put the `.adf` files in `Game\`, extract them with
   `python tools/unadf.py`, then run `python tools/amiga_export.py`. It writes one `gfx\` folder (every
   picture by id, Amiga where there is one, else PC; cars, wheels) that the game reads; nothing is converted

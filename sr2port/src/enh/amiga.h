@@ -41,7 +41,11 @@ void amiga_swatch_select(int sel);
 void amiga_swatch_hide(void);
 int  amiga_swatch_hit(int x, int y);
 u32  amiga_swatch_rgb(int i);
-void amiga_paint_set(u16 car, int index, u32 rgb);
+void amiga_paint_set(u16 car, int index, u32 rgb);   /* rgb 0: none (the game's colour) */
+/* the swatch colours kept with a saved game (save_name: its DOS name) in a supplement beside it; a new game: none */
+void amiga_paint_save(const char *save_name);
+void amiga_paint_load(const char *save_name);
+void amiga_paint_reset(void);
 void amiga_paint_apply(u16 car, int index);
 void amiga_paint_preview(u32 rgb, int index);
 /* the race's steering wheel picture w (0 straight, 1 turned left, 2 turned right; -1 = the race is over) and wheel
