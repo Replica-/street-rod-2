@@ -507,7 +507,9 @@ static void aq_view(R3dView *v)
     v->aq_tr = (float)(0xE88 + DSS(DS_aq_def_top_xr));
     v->aq_th = (float)(2000 - (0x67C + DSS(DS_aq_def_top_h)));
     v->aq_floor = (float)-DSS(DS_aq_def_floor_h);
-    v->roll = atan2f((float)DSS(DS_rot_sin), (float)DSS(DS_rot_cos));
+    /* the roll in degrees (DS:9E70, 0 = level; the sin / cos at DS:A540 / BA90 are borrowed by the opponent's rotated
+     * picture, rot_alloc), turned the way the original turns its picture (rotate_about_centre 0379) */
+    v->roll = -(float)DSS(DS_rot_enable) * 0.017453293f;
     v->height = 0;
     if (v->cam_x < 0x564) v->cam_x = 0x564;                /* road_proj_x's mode-8 clamp */
     if (v->cam_x > 0xD5C) v->cam_x = 0xD5C;
