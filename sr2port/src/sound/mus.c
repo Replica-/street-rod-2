@@ -62,7 +62,7 @@ int snd_timbre_lookup(const char *name, int *index, u8 *out56)
 /* ---------------------------------------------------------------- .MUS files (2c57:09ca) */
 
 typedef struct { u8 hdr[70]; u8 *data; u32 size; } Mus;
-static Mus mus[6];                                  /* DS:B8EA descriptors, DS:BA94 data */
+static Mus mus[7];                                  /* DS:B8EA descriptors, DS:BA94 data; ENHANCED: 6 = MSR20.MUS */
 static int cur;                                     /* DS:B192: descriptor of the song being played */
 
 static void mus_file_load(const char *name, int slot)
@@ -115,6 +115,20 @@ void mus_songs_load(void)                                                /* 2c57
     mus_file_load(file_name(0x731C), 4);
     mus_file_load(file_name(0x7328), 5);
     mus_set_bank(2);
+}
+
+/* ENHANCED (the juke box menu, game/garage_jukebox.c): song 1..6 can be played; 6 = MSR20.MUS, which the game never
+ * loads, is loaded on the first ask */
+bool mus_song_ready(int song)
+{
+    if (song < 1 || song > 6) return false;
+    if (song == 6 && !mus[6].data) {
+        char *path = host_game_path("msr20.mus", false);
+        if (!path) return false;
+        host_free(path);
+        mus_file_load("msr20.mus", 6);
+    }
+    return mus[song].data != NULL;
 }
 
 /* ---------------------------------------------------------------- music timer (2f1b) */
@@ -261,7 +275,7 @@ static int mus_tick(void)
             if (e != -2) {
                 if (e == -1) list_cur = list_start;
                 int i = DSS(list_cur);
-                if (i >= 1 && i <= 5 && mus[i].data) {
+                if (i >= 1 && i <= 6 && mus[i].data) {
                     Mus *m = &mus[i];
                     rd = m->data;
                     rd_end = m->data + m->size;

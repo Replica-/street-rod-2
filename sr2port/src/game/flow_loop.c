@@ -178,7 +178,8 @@ garage_start:
         case 14: redraw = under_car_menu(); continue;             /* S "Under the car" (2925:3174) */
         case 16: car_info_sr2();         redraw = 0; continue;    /* I "Car info" */
         case -40:                                                 /* the juke box: "Catch some tunes" / "Squelch it !" */
-            if (DSW(DS_music_on) == 0) { DSW(DS_music_on) = 1; music_resume(); }
+            if (jukebox_menu_on()) jukebox_menu();                /* ENHANCED: the song menu */
+            else if (DSW(DS_music_on) == 0) { DSW(DS_music_on) = 1; music_resume(); }
             else { music_stop(); DSW(DS_music_on) = 0; }
             redraw = 0;
             wait_ticks(10);

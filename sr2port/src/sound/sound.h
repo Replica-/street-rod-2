@@ -23,7 +23,9 @@ void snd_slot_call_va(int k, int arg, ...);
 void music_stop(void);                 /* 0001:1728 */
 void music_resume(void);               /* 0001:1784 */
 void music_mute(s16 on);               /* 2c57:00f6 (speaker slot 22) */
-void music_resume_after_race(void);    /* 0001:2164 */
+void music_resume_after_race(void);
+bool mus_song_ready(int song);         /* ENHANCED (juke box menu): song 1..6 loaded (6 = MSR20.MUS, loaded now) */
+void mus_list_play(u16 list);    /* 0001:2164 */
 void tune_start(int word_off, int delay);   /* 0001:2002 */
 void tune_rewind(void);                /* 0001:208a */
 

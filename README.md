@@ -43,6 +43,9 @@ fallback (`--classic`):
   `python tools/unadf.py`, then run `python tools/amiga_export.py`. It writes one `gfx\` folder (every
   picture by id, Amiga where there is one, else PC; cars, wheels) that the game reads; nothing is converted
   while playing. `gfx\` is game art and is not in git.
+- **Music** (AdLib): the playlist's songs follow each other without the original's ~2 minute silence, and
+  the garage juke box opens a menu: "Squelch it !" / "Catch some tunes" or pick one of the six songs
+  (including `MSR20.MUS`, which the game never plays). `--classic` keeps the original's on / off toggle.
 - Copy protection question skipped (`--protection` shows it).
 
 Known WIP: small PC pieces the game pastes onto Amiga backgrounds (garage lamp, floor papers), text boxes
