@@ -208,7 +208,7 @@ static void opponent_select(s16 i, s16 mode, s16 flag)
 {
     opponent_load(i);
     set_paint_palette(DSS(DS_opp_paint));
-    if (amiga_active()) amiga_paint_preview(0, DSS(DS_opp_paint));   /* ENHANCED (--amiga): an opponent's car: its game colour */
+    amiga_opp_paint(DSS(DS_opp_index), DSS(DS_opp_paint));   /* ENHANCED (--amiga): the opponent's car: its own colour */
     if (flag == 1) DSW(DS_car_pass) = 1;
     if (flag == 2 && DSS(DS_opp_index) == 0x15) DSW(DS_car_pass) = king_status() == 1;
     opponent_show(mode);

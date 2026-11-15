@@ -98,7 +98,7 @@ bool race_debug_main(void)
         DSS(DS_road_mode) = !strcmp(mode, "drag") ? 1 : !strcmp(mode, "mulholland") ? 0x10 : 8;
         opponent_load(env_int("SR_DEBUG_OPP", 0));
         set_paint_palette(DSS(DS_opp_paint));
-        if (amiga_active()) amiga_paint_preview(0, DSS(DS_opp_paint));   /* ENHANCED (--amiga): an opponent's car: its game colour */
+        amiga_opp_paint(DSS(DS_opp_index), DSS(DS_opp_paint));   /* ENHANCED (--amiga): the opponent's car: its own colour */
         DSW(DS_bet_kind) = 0;
         DSW(DS_bet_amount) = 0;
         DSW(DS_bet_button) = 1;

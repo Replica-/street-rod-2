@@ -778,15 +778,41 @@ void amiga_paint_apply(u16 car, int index)
     amiga_paint_preview(rgb, index);
 }
 
-/* the paint pair (registers 6 dark, 7 light) of game colour `index` shown as rgb: 7 = rgb, 6 = a darker shade */
-void amiga_paint_preview(u32 rgb, int index)
+/* palette registers rd (dark) / rl (light) holding the paint pair of game colour `index` shown as rgb: rl = rgb,
+ * rd = a darker shade (rgb 0: their own colours) */
+static void pair_paint(int rd, int rl, u32 rgb, int index)
 {
-    int e6 = DSB((u16)(DS_PAINT + 3 * index)), e7 = DSB((u16)(DS_PAINT + 3 * index + 1));
+    int ed = DSB((u16)(DS_PAINT + 3 * index)), el = DSB((u16)(DS_PAINT + 3 * index + 1));
     u32 dark = rgb ? ((rgb >> 16 & 255) * 7 / 10) << 16 | ((rgb >> 8 & 255) * 7 / 10) << 8 | (rgb & 255) * 7 / 10 : 0;
     if (rgb && !dark) dark = 0x010101;
-    sh_set_paint(6, dark, e6);
-    sh_set_paint(7, rgb, e7);
+    sh_set_paint(rd, dark, ed);
+    sh_set_paint(rl, rgb, el);
     ega_touch();
+}
+
+/* the paint pair (registers 6 dark, 7 light) of game colour `index` shown as rgb: 7 = rgb, 6 = a darker shade */
+void amiga_paint_preview(u32 rgb, int index) { pair_paint(6, 7, rgb, index); }
+
+/* An opponent's own colour: one of the swatch colours (not the near-black), by the opponent's number (consecutive
+ * opponents get different ones), instead of the game's six. */
+static u32 opp_rgb(int opp)
+{
+    u32 c[AMIGA_SWATCH_N];
+    int n = 0;
+    for (int i = 0; i < AMIGA_SWATCH_N; i++)
+        if (value_of(swatch[i]) > 0.25f) c[n++] = swatch[i];
+    if (opp < 0) opp = -opp;
+    return c[(opp * 7 + 3) % n];
+}
+
+void amiga_opp_paint(int opp, int index)
+{
+    if (on) pair_paint(6, 7, opp_rgb(opp), index);
+}
+
+void amiga_opp_race_paint(int opp, int index)
+{
+    if (on) pair_paint(12, 3, opp < 0 ? 0 : opp_rgb(opp), index);
 }
 
 /* ---------------------------------------------------------------- the driver's hands */

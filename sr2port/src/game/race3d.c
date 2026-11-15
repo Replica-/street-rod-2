@@ -14,6 +14,7 @@
 
 #include "game/race_int.h"
 #include "platform/ega.h"
+#include "platform/shadow.h"
 #include "r3d/r3d.h"
 
 #define MODE DSS(DS_road_mode)
@@ -93,6 +94,17 @@ static void build_mask(u8 *mask)
 #define PIC_MAX (320 * 200)
 static u32 pic_px[PIC_MAX];
 
+/* the 16 live colours (0xFFRRGGBB) of the palette registers; --amiga: with the cars' own paint, as the screen shows */
+static void live_palette(u32 rgb[16])
+{
+    u8 regs[16];
+    for (int i = 0; i < 16; i++) {
+        u8 r = regs[i] = ega_get_palette_reg(i);
+        rgb[i] = ega_palette[(r & 7) | (r >> 1 & 8)] | 0xFF000000u;
+    }
+    if (sh_enabled()) sh_paint_regs(rgb, regs);
+}
+
 /* A RAM bitmap descriptor (video.h: planes one after the other, stride bytes per row, mask 1 = transparent)
  * as BGRA through the current palette registers. */
 static bool decode_pic(FarPtr d, int *pw, int *ph)
@@ -105,10 +117,7 @@ static bool decode_pic(FarPtr d, int *pw, int *ph)
     bool has_mask = mk.seg || mk.off;
     if (base + 4 * plane > MEM_SIZE || (has_mask && mbase + plane > MEM_SIZE)) return false;
     u32 rgb[16];
-    for (int i = 0; i < 16; i++) {
-        u8 v = ega_get_palette_reg(i);
-        rgb[i] = ega_palette[(v & 7) | (v >> 1 & 8)] | 0xFF000000u;
-    }
+    live_palette(rgb);
     for (int y = 0; y < h; y++)
         for (int x = 0; x < w; x++) {
             u32 o = (u32)y * st + (u32)(x >> 3);
@@ -373,10 +382,7 @@ static void push_scenery(void)
     for (int i = 0; i < R3D_TRACK_N; i++)
         sum = (sum ^ (flag_l(i) | (u32)flag_r(i) << 16) ^ flag_c(i)) * 16777619u;
     u32 rgb[16];
-    for (int i = 0; i < 16; i++) {
-        u8 v = ega_get_palette_reg(i);
-        rgb[i] = ega_palette[(v & 7) | (v >> 1 & 8)] | 0xFF000000u;
-    }
+    live_palette(rgb);
     for (int t = 0; t < 23; t++) upload_shape(t, rgb);          /* cheap; hashed by r3d */
     if (!(MODE & 0x16)) upload_signs(rgb);
     if (sum == last_sum && MODE == last_mode) return;
@@ -430,10 +436,7 @@ static void push_sky(void)
     FarPtr pg = desc_planes(ds_far(DS_page1_ptr));
     u32 base = (u32)(pg.seg - 0xA000) * 16u + pg.off;
     u32 rgb[16];
-    for (int i = 0; i < 16; i++) {
-        u8 r = ega_get_palette_reg(i);
-        rgb[i] = ega_palette[(r & 7) | (r >> 1 & 8)] | 0xFF000000u;
-    }
+    live_palette(rgb);
     int rows[90], n = 0, horizon;
     if (MODE == 0x10) { for (int y = 110; y < 200; y++) rows[n++] = y; horizon = 44; }
     else {
@@ -508,10 +511,12 @@ static void push_view(void)
     if (drag()) v.height = 0;                              /* flat; the HGT pointer is not advanced there */
     if (MODE == 8) aq_view(&v);
     v.squeal = DSW(DS_squeal) != 0;
+    u8 regs[16];
     for (int i = 0; i < 16; i++) {
-        u8 r = ega_get_palette_reg(i);
+        u8 r = regs[i] = ega_get_palette_reg(i);
         v.pal[i] = ega_palette[(r & 7) | (r >> 1 & 8)];
     }
+    if (sh_enabled()) sh_paint_regs(v.pal, regs);         /* ENHANCED (--amiga): the cars' own colours, as the screen */
     push_sky();
     push_scenery();
     opp_sprite(&v.opp);

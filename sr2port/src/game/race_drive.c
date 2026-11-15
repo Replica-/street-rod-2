@@ -48,6 +48,7 @@ void drive_to_event(void)
  * -1 restores the saved pair */
 void opp_palette_set(s16 idx)
 {
+    amiga_opp_race_paint(-1, 0);                       /* ENHANCED (--amiga): the game's colours (drive_run sets the opponent's) */
     if (DSS(DS_driver_id) != -2 && DSS(DS_driver_id) != -6) return;
     u8 a, b;
     if (idx == -1) {
@@ -77,7 +78,10 @@ s16 drive_run(void)
     DSW(DS_light_latch) = 0;
     pal_load(DS_pal_game);
     set_paint_palette(CARC(cur_car(), CR_COLOUR));
-    if (DSB(DS_racing)) opp_palette_set(oc);
+    if (DSB(DS_racing)) {
+        opp_palette_set(oc);
+        amiga_opp_race_paint(DSS(DS_opp_index), oc);   /* ENHANCED (--amiga): the opponent's own colour */
+    }
     DSW(DS_start_panel_id) = (MODE & 6) ? 0x815 : MODE == 8 ? 0x813 : 0x816;
     static const u16 zero[] = { DS_aq_def_floor_h, DS_aq_saved_floor_h, DS_aq_def_xl, DS_aq_saved_xl, DS_aq_def_xr,
                                 DS_aq_saved_xr, DS_aq_def_top_h, DS_aq_saved_top_h, DS_aq_def_top_xl, DS_aq_wall_l_shift,

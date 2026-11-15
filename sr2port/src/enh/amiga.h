@@ -48,6 +48,10 @@ void amiga_paint_load(const char *save_name);
 void amiga_paint_reset(void);
 void amiga_paint_apply(u16 car, int index);
 void amiga_paint_preview(u32 rgb, int index);
+/* an opponent's car (opponent number opp, game colour index) in its own full colour: at Burger's (registers 6 / 7),
+ * in the race (12 / 3; opp -1: their own colours again) */
+void amiga_opp_paint(int opp, int index);
+void amiga_opp_race_paint(int opp, int index);
 /* the race's steering wheel picture w (0 straight, 1 turned left, 2 turned right; -1 = the race is over) and wheel
  * angle (-24..24): the driver's hands and the wheel's knob (gliding to the angle), a layer in front of the dashboard
  * (the split screen's rows below the race view); the layer (320 x 90, 0xAARRGGBB, alpha 0 = none) or NULL, made for
