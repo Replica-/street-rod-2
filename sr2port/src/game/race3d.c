@@ -309,6 +309,7 @@ static R3dObject objs[MAX_OBJECTS];
 static int build_objects(void)
 {
     int n = 0, mode = MODE, w = mode == 0x10 ? 200 : 400;
+    if (mode == 8) return 0;                                   /* the Aqueduct: its own obstacles (scene.c), no road scenery */
     int xol = 0x5DC - w, xor_ = 0xCE4 + w, xfl = -(w - 0x177) * 4, xfr = (w + 0x339) * 4;
     int t4 = mode == 0x10 ? 0x15 : 4, u = mode == 0x10 ? 0x16 : 0xB;
 #define ADDL(xx, t, sd, lf) do { if (n < MAX_OBJECTS) { objs[n].seg = (int16_t)i; objs[n].x = (int16_t)(xx); \
@@ -452,7 +453,8 @@ static void push_sky(void)
             for (int pl = 0; pl < 4; pl++) if (ega_plane(pl)[o] & bit) c |= 1 << pl;
             sky[k * 320 + x] = rgb[c];
         }
-    /* ENHANCED: the sky's own colour (the commonest of the top row) see-through: the gradient shows there */
+    /* ENHANCED: the sky's own colour (the commonest of the top row) see-through down each column to the first
+     * other colour (a skyline in the sky's colour, e.g. black hills at night, stays): the gradient shows there */
     int cnt[16] = { 0 }, top = 0;
     u32 key[16];
     for (int x = 0; x < 320; x++)
@@ -460,7 +462,8 @@ static void push_sky(void)
             if (sky[x] == rgb[c]) { cnt[c]++; break; }
     for (int c = 1; c < 16; c++) if (cnt[c] > cnt[top]) top = c;
     for (int c = 0; c < 16; c++) key[c] = rgb[c];
-    for (int i = 0; i < 320 * n; i++) if (sky[i] == key[top]) sky[i] &= 0x00FFFFFFu;
+    for (int x = 0; x < 320; x++)
+        for (int k = 0; k < n && sky[k * 320 + x] == key[top]; k++) sky[k * 320 + x] &= 0x00FFFFFFu;
     r3d_sky_base(key[top] & 0xFFFFFFu);
     r3d_sky_upload(sky, 320, n, horizon);
 }

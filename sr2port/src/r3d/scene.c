@@ -282,6 +282,50 @@ static int nobjects;
 #define MAX_SVERTS 36000
 static SVert sverts[MAX_SVERTS];
 
+/* ENHANCED: foliage (green pixels) and bark (brown) of the game's flat-colour shapes shaded on a 4x finer texture:
+ * lit from the upper left (the hills' sun), darker towards the right and bottom edges and low down, leaf clusters,
+ * bark streaks; other colours (signs, posts) as they are */
+#define SHADE_UP 4
+static float hash01(int a, int b);
+
+static int run_len(const uint32_t *px, int w, int h, int x, int y, int dx, int dy)
+{
+    int n = 0;
+    for (x += dx, y += dy; n < 6 && x >= 0 && y >= 0 && x < w && y < h && (px[y * w + x] >> 24); x += dx, y += dy) n++;
+    return n;
+}
+
+static uint32_t *shade_shape(const uint32_t *px, int w, int h)
+{
+    int W = w * SHADE_UP, H = h * SHADE_UP;
+    uint32_t *out = malloc((size_t)W * H * sizeof *out);
+    if (!out) return NULL;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            uint32_t c = px[y * w + x];
+            int r = c >> 16 & 255, g = c >> 8 & 255, b = c & 255;
+            bool leaf = (c >> 24) && g > r && g > b, bark = (c >> 24) && !leaf && r > b + 20 && r >= g;
+            float nl = run_len(px, w, h, x, y, -1, 0) / 6.0f, nr = run_len(px, w, h, x, y, 1, 0) / 6.0f;
+            float nt = run_len(px, w, h, x, y, 0, -1) / 6.0f, nb = run_len(px, w, h, x, y, 0, 1) / 6.0f;
+            for (int sy = 0; sy < SHADE_UP; sy++)
+                for (int sx = 0; sx < SHADE_UP; sx++) {
+                    int X = x * SHADE_UP + sx, Y = y * SHADE_UP + sy;
+                    float k = 1.0f;
+                    if (leaf) {
+                        float v = (float)Y / (float)H;
+                        k = (1.10f - 0.30f * v) * (1.0f + 0.22f * (1 - nt) + 0.12f * (1 - nl) - 0.20f * (1 - nr) - 0.14f * (1 - nb));
+                        k *= 0.82f + 0.36f * hash01(X / 3 + 7 * (Y / 3 & 1), Y / 3);   /* leaf clusters */
+                    } else if (bark) {
+                        k = (0.86f + 0.24f * hash01(X / 2, 911)) * (1.0f - 0.18f * (1 - nr) + 0.10f * (1 - nl));
+                    }
+                    float R = r * k, G = g * k, B = b * k;
+                    out[Y * W + X] = (c & 0xFF000000u) | (uint32_t)fminf(R, 255) << 16 | (uint32_t)fminf(G, 255) << 8 |
+                                     (uint32_t)fminf(B, 255);
+                }
+        }
+    return out;
+}
+
 void r3d_shape_upload(int type, const uint32_t *bgra, int w, int h, int ox, int oy, float scale)
 {
     if (type < 0 || type >= R3D_SHAPES || w <= 0 || h <= 0 || !sprog) return;
@@ -300,7 +344,11 @@ void r3d_shape_upload(int type, const uint32_t *bgra, int w, int h, int ox, int 
     }
     gl.BindTexture(GL_TEXTURE_2D, shp[type].tex);
     gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, bgra);
+    uint32_t *shaded = shade_shape(bgra, w, h);
+    if (shaded) {
+        gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w * SHADE_UP, h * SHADE_UP, 0, GL_BGRA, GL_UNSIGNED_BYTE, shaded);
+        free(shaded);
+    } else gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, bgra);
 }
 
 void r3d_objects_set(const R3dObject *objs, int n)
@@ -616,6 +664,19 @@ static void build(int first, int last, int mode)
  * aq_fl..aq_fr at aq_floor, walls up to the top edges aq_tl / aq_tr at aq_th, flat ground beyond. Flags per segment
  * (race_render.md 1.6): 1 joint line, 2 no centre trough, 4 / 0x100 left wall opening, 8 / 0x200 right, 0x400 white
  * floor band. */
+/* a box on segment p0..p1, lateral x0..x1, heights h0..h1: sides `side`, top `top` (aq_draw_box 8b5c: sides 2, top 5),
+ * the faces shaded by the light from the upper left */
+static void box(float p0, float p1, float x0, float x1, float h0, float h1, float sr, float sg, float sb,
+                float tr, float tg, float tb)
+{
+    const float kl[4] = { 0.85f, 0.85f, 0.85f, 0.85f }, kr[4] = { 0.62f, 0.62f, 0.62f, 0.62f };
+    const float kf[4] = { 0.74f, 0.74f, 0.90f, 0.90f };
+    band_k(p0, p1, x0, x1, h1, h1, h1, h1, tr, tg, tb, NULL);              /* top */
+    band_k(p0, p1, x0, x0, h0, h1, h0, h1, sr, sg, sb, kl);                /* left side */
+    band_k(p0, p1, x1, x1, h0, h1, h0, h1, sr, sg, sb, kr);                /* right side */
+    band_k(p0, p0, x0, x1, h0, h0, h1, h1, sr, sg, sb, kf);                /* near face */
+}
+
 static void build_channel(int first, int last, const R3dView *v)
 {
     nv = 0;
@@ -639,6 +700,14 @@ static void build_channel(int first, int last, const R3dView *v)
         else hill(i, p0, p1, tl, fl, th, fh, th, fh, PC(5));
         if (f & (8 | 0x200)) band(p0, p1, fr, tr, fh, th, fh, th, PC(0));
         else hill(i, p0, p1, fr, tr, fh, th, fh, th, PC(5));
+        /* the obstacles (aq_draw_scene 905c part 4; aq_lane_target / aq_collide_probe: 0x10 and 0x80 stop the car) */
+        float wd = fr - fl;
+        if (f & 0x10) box(p0, p1, fl + wd / 6, fr - wd / 6, fh, fh + (th - fh) / 7, PC(2), PC(5));   /* low box */
+        if (f & 0x80) {                                        /* two thin full-height pillars */
+            float d = wd / 7, t = d / 8;
+            box(p0, p1, fl + d, fl + d + t, fh, th, PC(2), PC(5));
+            box(p0, p1, fr - d - t, fr - d, fh, th, PC(2), PC(5));
+        }
         band(p0, p1, X_MID - FAR_X, tl, th, th, th, th, PC(0));
         band(p0, p1, tr, X_MID + FAR_X, th, th, th, th, PC(0));
     }
@@ -728,8 +797,8 @@ static void sky_colours(const float *s)
         const float h[3] = { 0.98f, 0.58f, 0.34f }, z[3] = { 0.22f, 0.20f, 0.42f };
         memcpy(sky_hor, h, sizeof h); memcpy(sky_zen, z, sizeof z);
     } else if (tod == 2 || l < 0.12f) {                       /* night: a deep blue glow low down, black above */
-        for (int k = 0; k < 3; k++) sky_zen[k] = s[k] * 0.4f + (k == 2 ? 0.035f : 0.008f);
-        sky_hor[0] = s[0] + 0.10f; sky_hor[1] = s[1] + 0.11f; sky_hor[2] = s[2] + 0.27f;
+        for (int k = 0; k < 3; k++) sky_zen[k] = s[k] * 0.4f + (k == 2 ? 0.012f : 0.003f);
+        sky_hor[0] = s[0] + 0.030f; sky_hor[1] = s[1] + 0.035f; sky_hor[2] = s[2] + 0.095f;
     } else {                                                   /* day: pale at the horizon, deeper overhead */
         for (int k = 0; k < 3; k++) {
             sky_hor[k] = fminf(s[k] * 0.75f + 0.28f, 1.0f);
@@ -766,6 +835,22 @@ static void sky_dome(const float *mvp, const float *eye, float bot)
             dome[n++] = q0; dome[n++] = q2; dome[n++] = q3;
         }
     }
+    /* stars on a dark sky: steady points, more and brighter higher up, a few larger ones */
+    float l = 0.3f * sky_zen[0] + 0.59f * sky_zen[1] + 0.11f * sky_zen[2];
+    static Vert star[900 * 6];
+    int ns = 0;
+    if (l < 0.05f && !rain)
+        for (int k = 0; k < 900; k++) {
+            float a = 6.2831853f * hash01(k, 1), e = asinf(0.04f + 0.96f * hash01(k, 2));
+            float br = 0.35f + 0.65f * hash01(k, 3) * (0.5f + 0.5f * e / 1.5707963f), sz = SKY_R * (hash01(k, 4) > 0.93f ? 0.0030f : 0.0016f);
+            float tint = hash01(k, 5);
+            float r = br * (tint > 0.8f ? 1.0f : 0.85f), g = br * 0.9f, b = br * (tint < 0.3f ? 1.0f : 0.92f);
+            float cx = eye[0] + SKY_R * cosf(e) * sinf(a), cy = eye[1] + SKY_R * sinf(e), cz = eye[2] + SKY_R * cosf(e) * cosf(a);
+            float ux = cosf(a) * sz, uz = -sinf(a) * sz;       /* across, then up */
+            Vert q0 = { cx - ux, cy - sz, cz - uz, r, g, b }, q1 = { cx + ux, cy - sz, cz + uz, r, g, b };
+            Vert q2 = { cx + ux, cy + sz, cz + uz, r, g, b }, q3 = { cx - ux, cy + sz, cz - uz, r, g, b };
+            star[ns++] = q0; star[ns++] = q1; star[ns++] = q2; star[ns++] = q0; star[ns++] = q2; star[ns++] = q3;
+        }
     gl.Disable(GL_DEPTH_TEST);
     gl.UseProgram(prog);
     gl.UniformMatrix4fv(loc_mvp, 1, GL_FALSE, mvp);
@@ -776,6 +861,10 @@ static void sky_dome(const float *mvp, const float *eye, float bot)
     gl.BindBuffer(GL_ARRAY_BUFFER, vbo);
     gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(n * sizeof(Vert)), dome, GL_STREAM_DRAW);
     gl.DrawArrays(GL_TRIANGLES, 0, n);
+    if (ns) {
+        gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(ns * sizeof(Vert)), star, GL_STREAM_DRAW);
+        gl.DrawArrays(GL_TRIANGLES, 0, ns);
+    }
     gl.BindVertexArray(0);
     gl.Enable(GL_DEPTH_TEST);
 }

@@ -65,7 +65,18 @@ site\        local HTML view of PLAN.md with token usage (not in git)
 sr2port\     the port (from phase 4)
 ```
 
+## Credits
+
+- Source code of this port: [kylofon/street-rod-2-sdl3](https://github.com/kylofon/street-rod-2-sdl3).
+- The engine it builds on: [kylofon/street-rod-sdl3](https://github.com/kylofon/street-rod-sdl3).
+- *Street Rod* and *Street Rod 2* were made by California Dreams / Logical Design Works (1989, 1991).
+- Copyright holder and licence holder of the games: **MK Consultancy** (Marco Kleijer). In Marco's words:
+
+  > My name is Marco Kleijer, I'm a Freelance Java Specialist, I create software for a living. In December
+  > 2012 my company, MK Consultancy, acquired copyright ownership of Street Rod and Street Rod 2. They are
+  > the license holders of this software.
+
 ## License
 
-MIT for the code in this repository (see [LICENSE](LICENSE)). Street Rod 2 is © California Dreams /
-Logical Design Works.
+MIT for the code in this repository (see [LICENSE](LICENSE)). *Street Rod* and *Street Rod 2* are © MK
+Consultancy (originally California Dreams / Logical Design Works); the game files are not included.
