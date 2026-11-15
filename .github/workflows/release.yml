@@ -1,0 +1,75 @@
+# Builds the Windows x64 release (sr2port.exe, the launcher "Street Rod 2.exe" and every DLL they need) with MSYS2
+# UCRT64, as the port is built locally (sr2port/PORTING.md). A pushed tag v* publishes a GitHub release with the zip;
+# a manual run (Actions > Release > Run workflow) only uploads the zip as an artifact.
+# The game's files are not in the zip: the first start downloads them from Street Rod Online (src/installer.c).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-sdl3
+            mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-wxwidgets3.2-msw
+            zip
+
+      - name: Build
+        run: |
+          cmake -S sr2port -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DSR2_LAUNCHER=ON
+          cmake --build build
+
+      - name: Package
+        id: pkg
+        run: |
+          name="street-rod-2-${GITHUB_REF_NAME//\//-}-windows-x64"
+          mkdir -p "dist/$name"
+          cp build/*.exe build/*.dll "dist/$name/"
+          cp README.md LICENSE "dist/$name/"
+          cp sr2port/third_party/nuked-opl3/LICENSE "dist/$name/LICENSE-Nuked-OPL3.txt"
+          # the zip must start on a machine without MSYS2: check that every DLL the programs load is in it
+          for exe in "dist/$name"/*.exe; do
+            for dll in $(objdump -p "$exe" | sed -n 's/^\s*DLL Name: //p'); do
+              if [ ! -f "dist/$name/$dll" ] && [ ! -f "/c/Windows/System32/$dll" ] && [[ "$dll" != api-ms-* ]]; then
+                echo "::error::$exe needs $dll, which is not in the package"; exit 1
+              fi
+            done
+          done
+          (cd dist && zip -r -9 "$name.zip" "$name")
+          echo "zip=dist/$name.zip" >> "$GITHUB_OUTPUT"
+          ls -la "dist/$name"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: street-rod-2-windows-x64
+          path: ${{ steps.pkg.outputs.zip }}
+
+      - name: Publish the release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "${{ steps.pkg.outputs.zip }}" \
+            --title "Street Rod 2 $GITHUB_REF_NAME" --generate-notes \
+            --notes "Windows x64. Unzip and start **Street Rod 2.exe** (or sr2port.exe). At the first start the game asks to download its files from [Street Rod Online](https://www.streetrodonline.com/) and sets itself up."
