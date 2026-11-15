@@ -838,8 +838,9 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
     gl.BindVertexArray(0);
 
     const float eye[3] = { ex, ey, ez };
-    if (mirror) scenery_draw(seg - 8 < 0 ? 0 : seg - 8, seg + 1, last, yaw, mvp, eye, haze);
-    else scenery_draw(first, seg + 12 < last ? seg + 12 : last, last, yaw, mvp, eye, haze);
+    /* the roadside objects as far as the road is drawn (no pop-in; the fog fades them in) */
+    if (mirror) scenery_draw(first, seg + 1, last, yaw, mvp, eye, haze);
+    else scenery_draw(first, last, last, yaw, mvp, eye, haze);
     sprite_draw(&v->opp, yaw, mvp, eye, haze);
     sprite_draw(&v->tree, yaw, mvp, eye, haze);
     if (!mirror) emit_puffs(v);
