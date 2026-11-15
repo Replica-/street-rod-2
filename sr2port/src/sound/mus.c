@@ -11,8 +11,11 @@
  *
  * PORT: verify U5 - at the end of a song the next song's first delay (0) is returned raw by mus_tick, so the
  * countdown wraps and the next mus_tick runs 65 536 music interrupts later (136 s at 480 Hz): the ~2 min
- * silence between playlist entries that sound.md 7.2 / 9 derive from the code. Kept as the code does it. */
+ * silence between playlist entries that sound.md 7.2 / 9 derive from the code. Kept as the code does it with
+ * --classic; ENHANCED (E6) otherwise: the next song starts at once, as mus_play starts the first. */
 #include "sound/snd_int.h"
+
+#include "r3d/r3d.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -266,6 +269,7 @@ static int mus_tick(void)
                     adlib_set_bend_range(m->hdr[0x3B]);
                     mus_set_tempo(hdr_tempo(m), m->hdr[0x24]);
                     mus_delay = *rd++;
+                    if (!r3d_classic() && mus_delay == 0) return 1;   /* ENHANCED (E6): no ~2 min silence */
                     return mus_delay;               /* raw, no F8 / 0 handling (see the PORT note at the top) */
                 }
             }

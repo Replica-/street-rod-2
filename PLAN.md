@@ -224,7 +224,7 @@ what `../StreetRodEnhanced` already does for the shared engine.
 | E3 | Launcher from `../StreetRodEnhanced/launcher/`: game folder, sound device, switches, window options | S | M |
 | E4 | Gamepad and key bindings, A/Z gear keys option | S | S |
 | E5 | Widescreen / integer scaling options | S | M |
-| E6 | Music option: no ~136 s silence between playlist songs (the original returns the next song's first delay 0 raw, so the countdown wraps; `sr2port/src/sound/mus.c` PORT note) | S | S |
+| E6 | Music option: no ~136 s silence between playlist songs (the original returns the next song's first delay 0 raw, so the countdown wraps; `sr2port/src/sound/mus.c` PORT note) | S | done 2026-11-15 (off with --classic) |
 | E7 | Amiga graphics option: unpack the Amiga release (`Game/amiga/disk1/libstart.p`, `disk2/lib.p`, packed; `tools/unadf.py` extracts the `.adf` disks), decode its pictures and palettes, map them onto the PC LIB1-3 screens | O | L |
 | E8 | Smooth 2D animation: the retrace the game waits for locked to the display (every n-th refresh nearest 70 Hz, `host.c` vsync_wait), so 70 Hz frames do not judder on 60/120 Hz displays; `--classic` keeps the VGA timing (done 2026-11-14) | S | S |
 Notes:
