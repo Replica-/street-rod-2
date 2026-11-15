@@ -9,6 +9,32 @@ time.
 Status and plan: [PLAN.md](PLAN.md) (as a page: `python tools/plan_site.py`, then open
 `site/index.html`). Agent rules: [CLAUDE.md](CLAUDE.md).
 
+## Credits
+
+- Source code of this port: [kylofon/street-rod-2-sdl3](https://github.com/kylofon/street-rod-2-sdl3).
+- The engine it builds on: [kylofon/street-rod-sdl3](https://github.com/kylofon/street-rod-sdl3).
+- [Street Rod Online](https://www.streetrodonline.com/): the official home of the games, where MK Consultancy
+  offers the original PC and Amiga releases for download.
+- *Street Rod* and *Street Rod 2* were made by California Dreams / Logical Design Works (1989, 1991).
+- Copyright holder and licence holder of the games: **MK Consultancy** (Marco Kleijer). In Marco's words:
+
+  > My name is Marco Kleijer, I'm a Freelance Java Specialist, I create software for a living. In December
+  > 2012 my company, MK Consultancy, acquired copyright ownership of Street Rod and Street Rod 2. They are
+  > the license holders of this software.
+
+## Screenshots
+
+With the Amiga graphics (`--amiga`) and the 3D race view:
+
+| | |
+|---|---|
+| ![The garage](docs/screenshots/garage.png) | ![Burger's Bungalow](docs/screenshots/burgers.png) |
+| The garage | Burger's Bungalow |
+| ![Cruising in town](docs/screenshots/cruise.png) | ![Drag race](docs/screenshots/drag.png) |
+| Cruising in town | Drag race |
+| ![Mulholland drive](docs/screenshots/mulholland.png) | ![Aqueduct race](docs/screenshots/aqueduct.png) |
+| Mulholland drive | Aqueduct race |
+
 ## Running
 
 Download: [v0.1.0 for Windows x64](https://github.com/kylofon/street-rod-2-sdl3/releases/tag/v0.1.0) (needs your own copy of the game).
@@ -64,17 +90,6 @@ work\        generated output and DOSBox reference captures (not in git)
 site\        local HTML view of PLAN.md with token usage (not in git)
 sr2port\     the port (from phase 4)
 ```
-
-## Credits
-
-- Source code of this port: [kylofon/street-rod-2-sdl3](https://github.com/kylofon/street-rod-2-sdl3).
-- The engine it builds on: [kylofon/street-rod-sdl3](https://github.com/kylofon/street-rod-sdl3).
-- *Street Rod* and *Street Rod 2* were made by California Dreams / Logical Design Works (1989, 1991).
-- Copyright holder and licence holder of the games: **MK Consultancy** (Marco Kleijer). In Marco's words:
-
-  > My name is Marco Kleijer, I'm a Freelance Java Specialist, I create software for a living. In December
-  > 2012 my company, MK Consultancy, acquired copyright ownership of Street Rod and Street Rod 2. They are
-  > the license holders of this software.
 
 ## License
 
