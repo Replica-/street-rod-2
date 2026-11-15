@@ -294,6 +294,75 @@ static void text(SDL_Renderer *r, float x, float y, const char *s, Uint8 cr, Uin
     SDL_RenderDebugText(r, x, y, s);
 }
 
+static void header(SDL_Renderer *r)
+{
+    SDL_SetRenderDrawColor(r, 12, 14, 34, 255);
+    SDL_RenderClear(r);
+    SDL_SetRenderScale(r, 2, 2);
+    text(r, 16, 14, "STREET ROD 2", 255, 90, 200);
+    text(r, 16, 28, "First-time setup", 140, 200, 255);
+    SDL_SetRenderScale(r, 1, 1);
+}
+
+static void button(SDL_Renderer *r, const SDL_FRect *b, const char *label, bool hot, bool main)
+{
+    SDL_SetRenderDrawColor(r, main ? (hot ? 255 : 210) : (hot ? 110 : 70), main ? (hot ? 110 : 70) : (hot ? 110 : 70),
+                           main ? (hot ? 210 : 170) : (hot ? 140 : 100), 255);
+    SDL_RenderFillRect(r, b);
+    SDL_SetRenderDrawColor(r, 255, 255, 255, 255);
+    SDL_RenderRect(r, b);
+    float tw = (float)strlen(label) * SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE * 2;
+    SDL_SetRenderScale(r, 2, 2);
+    text(r, (b->x + (b->w - tw) / 2) / 2, (b->y + b->h / 2 - SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE) / 2, label, 255, 255, 255);
+    SDL_SetRenderScale(r, 1, 1);
+}
+
+/* the question: what is missing, what is fetched and from where; Yes (Y, Enter) / No (N, Esc, closing the window) */
+static bool ask(SDL_Renderer *r)
+{
+    const SDL_FRect yes = { 160, 286, 140, 40 }, no = { 340, 286, 140, 40 };
+    for (;;) {
+        SDL_Event ev;
+        while (SDL_PollEvent(&ev)) {
+            if (ev.type == SDL_EVENT_QUIT) return false;
+            if (ev.type == SDL_EVENT_KEY_DOWN) {
+                SDL_Keycode k = ev.key.key;
+                if (k == SDLK_Y || k == SDLK_RETURN || k == SDLK_KP_ENTER) return true;
+                if (k == SDLK_N || k == SDLK_ESCAPE) return false;
+            }
+            if (ev.type == SDL_EVENT_MOUSE_BUTTON_UP && ev.button.button == SDL_BUTTON_LEFT) {
+                SDL_FPoint p = { ev.button.x, ev.button.y };
+                if (SDL_PointInRectFloat(&p, &yes)) return true;
+                if (SDL_PointInRectFloat(&p, &no)) return false;
+            }
+        }
+        float mx, my;
+        SDL_GetMouseState(&mx, &my);
+        SDL_FPoint m = { mx, my };
+        header(r);
+        char line[96];
+        text(r, 32, 92, "The game files were not found in the game folder:", 200, 200, 210);
+        SDL_snprintf(line, sizeof line, "%.74s", dir);
+        text(r, 48, 106, line, 150, 150, 170);
+        text(r, 32, 132, "Download them now from Street Rod Online (www.streetrodonline.com)?", 255, 255, 255);
+        float y = 156;
+        if (need_pc) { text(r, 48, y, "- the PC release (sr2pc.zip, about 0.7 MB)", 200, 200, 210); y += 14; }
+        if (need_amiga) { text(r, 48, y, "- the Amiga disks for the Amiga graphics (sr2amiga.zip, about 1 MB)", 200, 200, 210); y += 14; }
+        text(r, 32, y + 12, "Every file is checked (MD5) and unpacked into the game folder,", 150, 150, 170);
+        text(r, 32, y + 26, "then the game starts.", 150, 150, 170);
+        button(r, &yes, "Yes", SDL_PointInRectFloat(&m, &yes), true);
+        button(r, &no, "No", SDL_PointInRectFloat(&m, &no), false);
+        text(r, 32, 340, "Y / Enter = yes     N / Esc = no", 120, 120, 140);
+        const char *shot = getenv("SR_SETUP_SHOT");   /* developer aid: this screen to a BMP, then no */
+        if (shot) {
+            SDL_Surface *sf = SDL_RenderReadPixels(r, NULL);
+            if (sf) { SDL_SaveBMP(sf, shot); SDL_DestroySurface(sf); }
+            return false;
+        }
+        SDL_RenderPresent(r);
+    }
+}
+
 bool installer_run(const char *game_dir, bool want_amiga)
 {
     dir = game_dir;
@@ -305,28 +374,16 @@ bool installer_run(const char *game_dir, bool want_amiga)
 
     if (!SDL_Init(SDL_INIT_VIDEO)) return true;          /* no window: let the game report the missing files */
 
-    /* ask first: nothing is downloaded without a yes */
-    char msg[1024];
-    SDL_snprintf(msg, sizeof msg,
-                 "The Street Rod 2 game files were not found in the game folder:\n%s\n\n"
-                 "Download them now from Street Rod Online (www.streetrodonline.com)?\n\n%s%s"
-                 "The files are checked (MD5) and unpacked into the game folder; then the game starts.",
-                 dir, need_pc ? "  - the PC release (sr2pc.zip, about 0.7 MB)\n" : "",
-                 need_amiga ? "  - the Amiga disks for the Amiga graphics (sr2amiga.zip, about 1 MB)\n\n" : "\n");
-    const SDL_MessageBoxButtonData buttons[] = {
-        { SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Download" },
-        { SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Cancel" },
-    };
-    const SDL_MessageBoxData box = { SDL_MESSAGEBOX_INFORMATION, NULL, "Street Rod 2 - Setup", msg,
-                                     (int)SDL_arraysize(buttons), buttons, NULL };
-    int choice = 0;
-    if (getenv("SR_SETUP_YES")) choice = 1;              /* developer aid: unattended test runs */
-    else if (!SDL_ShowMessageBox(&box, &choice)) choice = 0;
-    if (choice != 1) return false;
     SDL_Window *w = NULL;
     SDL_Renderer *r = NULL;
     if (!SDL_CreateWindowAndRenderer("Street Rod 2 - Setup", 640, 360, 0, &w, &r)) return true;
     SDL_SetRenderVSync(r, 1);
+    /* ask first, in the same window: nothing is downloaded without a yes (SR_SETUP_YES=1: unattended test runs) */
+    if (!getenv("SR_SETUP_YES") && !ask(r)) {
+        SDL_DestroyRenderer(r);
+        SDL_DestroyWindow(w);
+        return false;
+    }
     lock = SDL_CreateMutex();
     SDL_SetAtomicInt(&done, 0);
     SDL_SetAtomicInt(&cancel, 0);
@@ -350,12 +407,7 @@ bool installer_run(const char *game_dir, bool want_amiga)
         g = got; tt = total; ov = overall;
         SDL_UnlockMutex(lock);
 
-        SDL_SetRenderDrawColor(r, 12, 14, 34, 255);
-        SDL_RenderClear(r);
-        SDL_SetRenderScale(r, 2, 2);
-        text(r, 16, 14, "STREET ROD 2", 255, 90, 200);
-        text(r, 16, 28, "First-time setup", 140, 200, 255);
-        SDL_SetRenderScale(r, 1, 1);
+        header(r);
         text(r, 32, 92, "The game files were not found in the game folder. They are being", 200, 200, 210);
         text(r, 32, 104, "downloaded from Street Rod Online (www.streetrodonline.com).", 200, 200, 210);
         text(r, 32, 140, s, 255, 255, 255);
