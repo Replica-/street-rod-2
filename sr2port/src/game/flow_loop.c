@@ -2,6 +2,7 @@
  * 0001:07b0 (port/spec/game_flow.md "game_loop"). Ground truth: Ghidra decompile port/decomp/sr2_ds.c 4974-5241.
  * Replaces the placeholder game_main of game/flow_stub.c. */
 #include "game/game.h"
+#include "enh/amiga.h"
 #include "game/events.h"
 #include "game/race.h"
 #include "game/ds_events.h"
@@ -52,6 +53,11 @@ garage_start:
     again = 0;
 
     for (;;) {
+        if (amiga_active()) {                                     /* ENHANCED (--amiga): the newspaper lies further right */
+            u16 e = DSW(DS_SCREENS);                              /* screen 0, element code 1: (4,162)-(38,184) */
+            for (int k = 0; k < 40 && DSS((u16)(e + 6)) != 1; k++) e = (u16)(e + 0x12);
+            if (DSS((u16)(e + 6)) == 1) { DSS((u16)(e + 8)) = 4; DSS((u16)(e + 10)) = 156; DSS((u16)(e + 12)) = 74; DSS((u16)(e + 14)) = 188; }
+        }
         code = garage_screen(redraw);
         if (getenv("SR_TRACE")) fprintf(stderr, "trace: %ldms garage code %d\n", (long)clock(), code);   /* PORT: developer aid */
         if (code == 0) goto new_or_load;

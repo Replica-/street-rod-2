@@ -28,4 +28,5 @@ __pycache__/
 
 # Amiga graphics converted by tools/amiga_export.py (game data, never committed)
 gfx/
+!sr2port/assets/gfx/
 paint.cfg

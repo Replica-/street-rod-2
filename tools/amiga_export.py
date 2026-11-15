@@ -64,6 +64,9 @@ HANDS = {79: 'hand_l', 80: 'hand_r', 81: 'arm_l', 82: 'arm_r'}
 HAND_SKIN = {6: (250, 210, 170), 7: (236, 190, 148), 8: (218, 168, 126), 9: (196, 144, 104), 11: (170, 120, 84),
              12: (142, 98, 66), 39: (150, 108, 76), 40: (136, 96, 66), 41: (120, 82, 56), 43: (110, 74, 50),
              44: (88, 58, 38)}
+# the garage (1018): its paint can takes the car's paint (alpha 254, as the cars: recoloured keeping its brightness), the
+# three purple dots above it go (each gets its left neighbour)
+CAN = {1018: ((205, 170, 222, 186), {0xCC11BB, 0xFF00FF}, (205, 163, 217, 169), 0x7F007F)}
 HIDE = {1149}                                      # Burger's Bungalow: the man by the door (the Amiga picture has him)
 
 
@@ -196,6 +199,14 @@ def main():
                     I[i] = I[i - 1]
         a = lambda i, c: 0xFE000000 if int(pid) in PAINT_PICS and i // w < PAINT_ROWS and (c & 31) in (6, 7) else 0xFF000000
         px = [0 if c < 0 else a(i, c) | rgb(p[c % len(p)]) for i, c in enumerate(I)]
+        if int(pid) in CAN:
+            (cx0, cy0, cx1, cy1), paint, (dx0, dy0, dx1, dy1), dot = CAN[int(pid)]
+            for y in range(dy0, dy1):
+                for x in range(dx0, dx1):
+                    if px[y * w + x] & 0xFFFFFF == dot: px[y * w + x] = px[y * w + x - 1]
+            for y in range(cy0, cy1):
+                for x in range(cx0, cx1):
+                    if px[y * w + x] & 0xFFFFFF in paint: px[y * w + x] = 0xFE000000 | (px[y * w + x] & 0xFFFFFF)
         write_bmp(os.path.join(out, 'pic_%s.bmp' % pid), w, h, px)
         n += 1
     hp = list(amilib.exe_palette(1, libs[0][70]['depth']))

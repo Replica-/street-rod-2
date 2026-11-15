@@ -8,6 +8,24 @@
 #define PIT_DIV_GAME  0x4000u        /* 16384 -> 72.82 Hz, timer install 0000:1111 (RE_GUIDE.md) */
 
 bool host_init(const char *game_dir, int window_scale, bool fullscreen);
+
+/* ENHANCED: controls (the garage clock's "Controls" menu), kept in controls.cfg in the game folder.
+ * Keyboard: each driving action can have its own key, which then acts as the game's key (the game's keys keep working).
+ * Controller: on / off, and the pad buttons for gear up / gear down (as the A / Z keys). */
+enum { HC_ACCEL, HC_BRAKE, HC_LEFT, HC_RIGHT, HC_SHIFT, HC_GEAR_UP, HC_GEAR_DOWN, HC_KEYS };
+const char *host_control_name(int action);      /* "Accelerate" ... */
+const char *host_control_key(int action);       /* the key's name */
+void host_control_set_key(int action, int sdl_scancode);
+bool host_pad_enabled(void);
+void host_pad_enable(bool on);
+const char *host_pad_button(int up);            /* the gear up (1) / gear down (0) button's name */
+void host_pad_set_button(int up, int sdl_button);
+void host_controls_reset(void);
+void host_controls_save(void);
+/* "press a key / button": host_capture_begin(0 key, 1 pad button); host_capture_poll returns 0 waiting, 1 got *code,
+ * -1 cancelled (Esc) */
+void host_capture_begin(int pad);
+int host_capture_poll(int *code);
 void host_shutdown(void);
 
 /* Called once per timer tick from host_pump() (the port's replacement for INT 8). The platform timer

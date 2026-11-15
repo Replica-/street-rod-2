@@ -32,6 +32,16 @@ void r3d_letterbox(float w, float h, float *x, float *y, float *rw, float *rh);
 void r3d_present(const uint32_t *frame, int fw, int fh);
 /* Developer aid: the last presented picture (3D + frame) as a BMP. */
 bool r3d_save_bmp(const char *path);
+/* ENHANCED (widescreen): painted strips shown in the window's side bars beside the 4:3 picture: l / r pixels (0xAARRGGBB,
+ * top-down), each standing for game_w columns of the picture's top `rows` rows; NULL: black bars */
+typedef struct R3dStrips { const uint32_t *l, *r; int lw, lh, rw, rh, game_w, rows; uint32_t below;
+    const uint32_t *car; int car_w, car_h, car_x, car_y; } R3dStrips;   /* car: the part of the driving car left of
+ * the picture (car_x < 0, game pixels), 0xAARRGGBB, drawn over the left strip; NULL = none */   /* below: the
+ * colour of the rows under the strips (the status line), 0 = black */
+void r3d_set_strips(const R3dStrips *s);
+/* developer aid (F12): the whole window as shown (side strips included) to a BMP at the next present; true once done */
+void r3d_request_window_shot(const char *path);
+bool r3d_window_shot_done(void);
 /* developer aid (SR_VIDEO): the presented picture as RGBA rows, bottom-up; false without the GL view */
 bool r3d_read_pixels(uint8_t **rgba, int *w, int *h);
 

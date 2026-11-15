@@ -477,6 +477,16 @@ bool amiga_export_run(const char *game_dir, const char *out, char *err, size_t e
             Uint32 a = is_paint_pic(pid) && i / w < PAINT_ROWS && c >= 0 && ((c & 31) == 6 || (c & 31) == 7) ? 0xFE000000u : 0xFF000000u;
             px[i] = c < 0 ? 0 : a | p[pmod(c, np)];
         }
+        if (pid == 1018) {                              /* CAN: the garage's paint can takes the car's paint, no dots */
+            for (int y = 163; y < 169; y++)
+                for (int x = 205; x < 217; x++)
+                    if ((px[y * w + x] & 0xFFFFFF) == 0x7F007F) px[y * w + x] = px[y * w + x - 1];
+            for (int y = 170; y < 186; y++)
+                for (int x = 205; x < 222; x++) {
+                    Uint32 v = px[y * w + x] & 0xFFFFFF;
+                    if (v == 0xCC11BB || v == 0xFF00FF) px[y * w + x] = 0xFE000000u | v;
+                }
+        }
         char name[32];
         SDL_snprintf(name, sizeof name, "pic_%d.bmp", pid);
         save32(name, w, h, px);

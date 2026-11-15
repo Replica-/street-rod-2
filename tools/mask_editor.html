@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mask Editor</title>
+<style>
+  :root { --bg: #15161c; --panel: #1f2129; --text: #e6e6ea; --muted: #9a9cab; --accent: #ff4f9a; --line: #33364a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; display: flex; height: 100vh; }
+  #side { width: 320px; padding: 14px; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+  h1 { font-size: 16px; margin: 0; color: var(--accent); }
+  label { color: var(--muted); font-size: 12px; display: block; margin-bottom: 4px; }
+  button, .file { background: #2c2f3d; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; cursor: pointer; font: inherit; }
+  button:hover, .file:hover { border-color: var(--accent); }
+  button.on { background: var(--accent); color: #111; border-color: var(--accent); }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  textarea { width: 100%; min-height: 110px; background: #12131a; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: inherit; resize: vertical; }
+  input[type=range] { width: 100%; }
+  input[type=file] { display: none; }
+  #save { background: var(--accent); color: #111; font-weight: 600; }
+  .hint { color: var(--muted); font-size: 12px; }
+  #layers { display: flex; flex-direction: column; gap: 4px; }
+  .layer { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; background: #262836; }
+  .layer.sel { border-color: var(--accent); background: #2f2234; }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+  .layer .lname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .layer .lname.empty { color: var(--muted); font-style: italic; }
+  .layer button { padding: 2px 7px; font-size: 12px; }
+  #stage { flex: 1; position: relative; overflow: hidden; background: repeating-conic-gradient(#1b1c22 0 25%, #202129 0 50%) 0 0 / 24px 24px; }
+  #stage canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; image-rendering: pixelated; }
+  #drop { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 16px; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="side">
+  <h1>Mask Editor</h1>
+  <div>
+    <label>Picture</label>
+    <label class="file" for="pick" style="display:inline-block;color:var(--text);margin:0">Open picture…</label>
+    <input type="file" id="pick" accept="image/*">
+    <div class="hint" id="name">or drag a picture onto the page</div>
+  </div>
+  <div>
+    <label>Touch-ups (one layer each)</label>
+    <div id="layers"></div>
+    <div class="row" style="margin-top:6px">
+      <button id="add">+ New touch-up (N)</button>
+    </div>
+  </div>
+  <div>
+    <label>What should change in the selected touch-up?</label>
+    <textarea id="desc" placeholder="e.g. replace the shrub with the picket fence continuing, black sky above"></textarea>
+  </div>
+  <div>
+    <label>Tool</label>
+    <div class="row">
+      <button id="brush" class="on">Brush (B)</button>
+      <button id="erase">Eraser (E)</button>
+      <button id="line">Line (L)</button>
+      <button id="rect">Rectangle (R)</button>
+      <button id="ellipse">Ellipse (O)</button>
+    </div>
+  </div>
+  <div class="hint">Line: drag from end to end (Shift: straight / 45°). Rectangle, Ellipse: drag corner to corner, filled
+    (Shift: square / circle). Size sets the brush, eraser and line thickness.</div>
+  <div>
+    <label>Brush size: <span id="sizev">40</span> px</label>
+    <input type="range" id="size" min="2" max="300" value="40">
+  </div>
+  <div class="row">
+    <button id="undo">Undo (Ctrl+Z)</button>
+    <button id="clear">Clear layer</button>
+    <button id="fit">Fit (F)</button>
+  </div>
+  <button id="send" style="display:none">Send to Claude</button>
+  <div class="hint" id="sent"></div>
+  <button id="save">Save touch-ups</button>
+  <div class="hint">
+    Saves to your Downloads: <b>name_mask_1.png</b>, <b>name_mask_2.png</b>… (white = change), <b>name_request.txt</b>
+    (every touch-up with its description) and <b>name_marked.png</b> (the picture with each touch-up in its colour).
+    Then tell Claude they are saved.<br><br>
+    Wheel = zoom, right-drag or Space + drag = pan. The eye hides a layer while you paint another.
+  </div>
+</div>
+<div id="stage">
+  <canvas id="img"></canvas>
+  <div id="drop">Open a picture to start</div>
+</div>
+<script>
+const COLORS = ['#ff2850', '#28a0ff', '#ffc828', '#3cdc5a', '#b450ff', '#ff8c28', '#28e6dc', '#ff50c8'];
+const stage = document.getElementById('stage'), cImg = document.getElementById('img'), gImg = cImg.getContext('2d');
+const descEl = document.getElementById('desc');
+let name = 'picture', tool = 'brush', size = 40, zoom = 1, ox = 0, oy = 0, drawing = false, panning = false, space = false;
+let last = null, undo = [], layers = [], cur = -1, made = 0, shapeStart = null, shapeSnap = null;
+const SHAPES = ['line', 'rect', 'ellipse'];
+
+function canvases() { return [cImg, ...layers.map(l => l.c)]; }
+function setView() { for (const c of canvases()) c.style.transform = `translate(${ox}px,${oy}px) scale(${zoom})`; }
+function fit() {
+  if (!cImg.width) return;
+  const r = stage.getBoundingClientRect();
+  zoom = Math.min(r.width / cImg.width, r.height / cImg.height) * 0.95;
+  ox = (r.width - cImg.width * zoom) / 2; oy = (r.height - cImg.height * zoom) / 2;
+  setView();
+}
+
+function addLayer() {
+  if (!cImg.width) return;
+  const c = document.createElement('canvas');
+  c.width = cImg.width; c.height = cImg.height;
+  c.style.opacity = 0.55;                                   /* the picture shows through the touch-up's colour */
+  stage.insertBefore(c, document.getElementById('drop'));
+  const color = COLORS[made % COLORS.length];
+  made++;
+  layers.push({ c, g: c.getContext('2d'), color, desc: '', title: 'Touch-up ' + made, visible: true });
+  select(layers.length - 1);
+  setView();
+}
+function select(i) {
+  if (cur >= 0 && layers[cur]) layers[cur].desc = descEl.value;
+  cur = i;
+  descEl.value = cur >= 0 ? layers[cur].desc : '';
+  renderList();
+}
+function removeLayer(i) {
+  if (layers[i].desc || !empty(layers[i]))
+    if (!confirm('Delete ' + layers[i].title + '?')) return;
+  layers[i].c.remove();
+  layers.splice(i, 1);
+  undo = undo.filter(u => u.layer !== i).map(u => ({ ...u, layer: u.layer > i ? u.layer - 1 : u.layer }));
+  cur = -1;
+  if (layers.length) select(Math.min(i, layers.length - 1)); else { descEl.value = ''; renderList(); }
+}
+function empty(l) {
+  const d = l.g.getImageData(0, 0, l.c.width, l.c.height).data;
+  for (let i = 3; i < d.length; i += 4) if (d[i]) return false;
+  return true;
+}
+function renderList() {
+  const box = document.getElementById('layers');
+  box.innerHTML = '';
+  layers.forEach((l, i) => {
+    const row = document.createElement('div');
+    row.className = 'layer' + (i === cur ? ' sel' : '');
+    const sw = document.createElement('span'); sw.className = 'swatch'; sw.style.background = l.color;
+    const nm = document.createElement('span');
+    const text = i === cur ? descEl.value : l.desc;
+    nm.className = 'lname' + (text ? '' : ' empty');
+    nm.textContent = l.title + (text ? ': ' + text : ' (no description yet)');
+    nm.title = 'Double-click to rename';
+    nm.ondblclick = e => { e.stopPropagation(); const t = prompt('Name', l.title); if (t) { l.title = t; renderList(); } };
+    const eye = document.createElement('button'); eye.textContent = l.visible ? '👁' : '–'; eye.title = 'Show / hide';
+    eye.onclick = e => { e.stopPropagation(); l.visible = !l.visible; l.c.style.display = l.visible ? '' : 'none'; renderList(); };
+    const del = document.createElement('button'); del.textContent = '✕'; del.title = 'Delete';
+    del.onclick = e => { e.stopPropagation(); removeLayer(i); };
+    row.append(sw, nm, eye, del);
+    row.onclick = () => select(i);
+    box.append(row);
+  });
+}
+descEl.addEventListener('input', () => { if (cur >= 0) { layers[cur].desc = descEl.value; renderList(); } });
+
+let source = '';
+function load(file) {
+  name = file.name.replace(/\.[^.]+$/, '');
+  document.getElementById('name').textContent = file.name;
+  const img = new Image();
+  img.onload = () => {
+    cImg.width = img.width; cImg.height = img.height;
+    gImg.drawImage(img, 0, 0);
+    for (const l of layers) l.c.remove();
+    layers = []; cur = -1; made = 0; undo = [];
+    document.getElementById('drop').style.display = 'none';
+    addLayer();
+    fit();
+  };
+  img.src = URL.createObjectURL(file);
+}
+document.getElementById('pick').onchange = e => { if (e.target.files[0]) { source = ''; load(e.target.files[0]); } };
+/* opened through tools/mask_server.py: ?img=<repository path> loads that picture; Send to Claude posts the touch-ups */
+const served = location.protocol.startsWith('http');
+if (served) {
+  document.getElementById('send').style.display = '';
+  document.getElementById('save').textContent = 'Save to Downloads instead';
+  const img = new URLSearchParams(location.search).get('img');
+  if (img) fetch('/file?path=' + encodeURIComponent(img)).then(r => r.ok ? r.blob() : Promise.reject(r.status))
+    .then(b => { load(new File([b], img.split('/').pop())); source = img; })
+    .catch(() => document.getElementById('name').textContent = 'could not open ' + img);
+}
+/* a copy of this page made with a picture built in (window.PRELOAD = { name, data: 'data:image/png;base64,...' }) */
+if (window.PRELOAD) fetch(PRELOAD.data).then(r => r.blob()).then(b => load(new File([b], PRELOAD.name)));
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]); });
+
+function toImg(e) {
+  const r = stage.getBoundingClientRect();
+  return { x: (e.clientX - r.left - ox) / zoom, y: (e.clientY - r.top - oy) / zoom };
+}
+function stroke(a, b) {
+  const l = layers[cur], g = l.g;
+  g.globalCompositeOperation = tool === 'erase' ? 'destination-out' : 'source-over';
+  g.strokeStyle = l.color;
+  g.globalAlpha = 1;
+  g.lineWidth = size; g.lineCap = g.lineJoin = 'round';
+  g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+}
+stage.addEventListener('contextmenu', e => e.preventDefault());
+stage.addEventListener('pointerdown', e => {
+  if (!cImg.width) return;
+  stage.setPointerCapture(e.pointerId);
+  if (e.button === 2 || e.button === 1 || space) { panning = true; last = { x: e.clientX, y: e.clientY }; return; }
+  if (cur < 0) addLayer();
+  const l = layers[cur];
+  if (!l.visible) { l.visible = true; l.c.style.display = ''; renderList(); }
+  undo.push({ layer: cur, data: l.g.getImageData(0, 0, l.c.width, l.c.height) });
+  if (undo.length > 40) undo.shift();
+  drawing = true; last = toImg(e);
+  if (SHAPES.includes(tool)) { shapeStart = last; shapeSnap = undo[undo.length - 1].data; return; }
+  stroke(last, last);
+});
+/* a shape from shapeStart to p on the selected layer, redrawn over the layer as it was when the drag began */
+function shape(p, shift) {
+  const l = layers[cur], g = l.g, a = shapeStart;
+  g.putImageData(shapeSnap, 0, 0);
+  let x = p.x, y = p.y;
+  if (shift) {
+    const dx = x - a.x, dy = y - a.y;
+    if (tool === 'line') {
+      const ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4), len = Math.hypot(dx, dy);
+      x = a.x + Math.cos(ang) * len; y = a.y + Math.sin(ang) * len;
+    } else {
+      const d = Math.max(Math.abs(dx), Math.abs(dy));
+      x = a.x + Math.sign(dx || 1) * d; y = a.y + Math.sign(dy || 1) * d;
+    }
+  }
+  g.globalCompositeOperation = 'source-over';
+  g.strokeStyle = g.fillStyle = l.color; g.globalAlpha = 1;
+  g.beginPath();
+  if (tool === 'line') {
+    g.lineWidth = size; g.lineCap = 'round';
+    g.moveTo(a.x, a.y); g.lineTo(x, y); g.stroke();
+  } else if (tool === 'rect') {
+    g.fillRect(Math.min(a.x, x), Math.min(a.y, y), Math.abs(x - a.x), Math.abs(y - a.y));
+  } else {
+    g.ellipse((a.x + x) / 2, (a.y + y) / 2, Math.abs(x - a.x) / 2, Math.abs(y - a.y) / 2, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+}
+stage.addEventListener('pointermove', e => {
+  if (panning) { ox += e.clientX - last.x; oy += e.clientY - last.y; last = { x: e.clientX, y: e.clientY }; setView(); return; }
+  if (!drawing) return;
+  const p = toImg(e);
+  if (shapeStart) { shape(p, e.shiftKey); return; }
+  stroke(last, p); last = p;
+});
+stage.addEventListener('pointerup', e => {
+  if (drawing && shapeStart) shape(toImg(e), e.shiftKey);
+  drawing = panning = false; shapeStart = shapeSnap = null;
+});
+stage.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = stage.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+  const f = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  ox = mx - (mx - ox) * f; oy = my - (my - oy) * f; zoom *= f; setView();
+}, { passive: false });
+
+function setTool(t) {
+  tool = t;
+  for (const id of ['brush', 'erase', ...SHAPES]) document.getElementById(id).classList.toggle('on', t === id);
+}
+function doUndo() {
+  const u = undo.pop();
+  if (u && layers[u.layer]) layers[u.layer].g.putImageData(u.data, 0, 0);
+}
+document.getElementById('brush').onclick = () => setTool('brush');
+document.getElementById('erase').onclick = () => setTool('erase');
+for (const id of SHAPES) document.getElementById(id).onclick = () => setTool(id);
+document.getElementById('add').onclick = addLayer;
+const sizeEl = document.getElementById('size');
+sizeEl.oninput = () => { size = +sizeEl.value; document.getElementById('sizev').textContent = size; };
+document.getElementById('undo').onclick = doUndo;
+document.getElementById('clear').onclick = () => {
+  if (cur < 0) return;
+  const l = layers[cur];
+  undo.push({ layer: cur, data: l.g.getImageData(0, 0, l.c.width, l.c.height) });
+  l.g.clearRect(0, 0, l.c.width, l.c.height);
+};
+document.getElementById('fit').onclick = fit;
+window.addEventListener('resize', fit);
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA') return;
+  if (e.code === 'Space') { space = true; e.preventDefault(); }
+  if (e.key === 'b') setTool('brush');
+  if (e.key === 'e') setTool('erase');
+  if (e.key === 'l') setTool('line');
+  if (e.key === 'r') setTool('rect');
+  if (e.key === 'o') setTool('ellipse');
+  if (e.key === 'f') fit();
+  if (e.key === 'n') addLayer();
+  if (e.key === 'z' && (e.ctrlKey || e.metaKey)) doUndo();
+});
+document.addEventListener('keyup', e => { if (e.code === 'Space') space = false; });
+
+function download(blob, file, delay) {
+  setTimeout(() => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = file; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }, delay);
+}
+function maskPng(l) {
+  const w = cImg.width, h = cImg.height, src = l.g.getImageData(0, 0, w, h), out = new ImageData(w, h);
+  for (let i = 0; i < src.data.length; i += 4) {
+    const v = src.data[i + 3] > 20 ? 255 : 0;
+    out.data[i] = out.data[i + 1] = out.data[i + 2] = v; out.data[i + 3] = 255;
+  }
+  const m = document.createElement('canvas'); m.width = w; m.height = h;
+  m.getContext('2d').putImageData(out, 0, 0);
+  return m.toDataURL('image/png');
+}
+function markedPng(used) {
+  const mk = document.createElement('canvas'); mk.width = cImg.width; mk.height = cImg.height;
+  const g = mk.getContext('2d'); g.drawImage(cImg, 0, 0);
+  g.globalAlpha = 0.55;
+  for (const l of used) g.drawImage(l.c, 0, 0);
+  return mk.toDataURL('image/png');
+}
+document.getElementById('send').onclick = () => {
+  if (!cImg.width) { alert('Open a picture first.'); return; }
+  if (cur >= 0) layers[cur].desc = descEl.value;
+  const used = layers.filter(l => !empty(l));
+  if (!used.length) { alert('Paint at least one touch-up first.'); return; }
+  const status = document.getElementById('sent');
+  status.textContent = 'Sending…';
+  fetch('/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    name, source, width: cImg.width, height: cImg.height, picture: cImg.toDataURL('image/png'), marked: markedPng(used),
+    touchups: used.map(l => ({ title: l.title, color: l.color, desc: l.desc, mask: maskPng(l) })),
+  }) }).then(r => r.json()).then(j => { status.textContent = 'Sent to Claude ✓ (' + j.folder + ')'; })
+    .catch(e => { status.textContent = 'Could not send: ' + e; });
+};
+document.getElementById('save').onclick = () => {
+  if (!cImg.width) { alert('Open a picture first.'); return; }
+  if (cur >= 0) layers[cur].desc = descEl.value;
+  const w = cImg.width, h = cImg.height, used = layers.filter(l => !empty(l));
+  if (!used.length) { alert('Paint at least one touch-up first.'); return; }
+  let t = 0;
+  const lines = [`Picture: ${name} (${w} x ${h})`, ''];
+  used.forEach((l, k) => {
+    const src = l.g.getImageData(0, 0, w, h), out = new ImageData(w, h);
+    for (let i = 0; i < src.data.length; i += 4) {
+      const v = src.data[i + 3] > 20 ? 255 : 0;
+      out.data[i] = out.data[i + 1] = out.data[i + 2] = v; out.data[i + 3] = 255;
+    }
+    const m = document.createElement('canvas'); m.width = w; m.height = h;
+    m.getContext('2d').putImageData(out, 0, 0);
+    const file = `${name}_mask_${k + 1}.png`;
+    m.toBlob(b => download(b, file, (t++) * 300));
+    lines.push(`${k + 1}. ${l.title} (${l.color}, ${file}): ${l.desc.trim() || '(no description)'}`);
+  });
+  const mk = document.createElement('canvas'); mk.width = w; mk.height = h;
+  const g = mk.getContext('2d'); g.drawImage(cImg, 0, 0);
+  g.globalAlpha = 0.55;
+  for (const l of used) g.drawImage(l.c, 0, 0);
+  mk.toBlob(b => download(b, name + '_marked.png', 1200));
+  download(new Blob([lines.join('\n') + '\n'], { type: 'text/plain' }), name + '_request.txt', 1500);
+};
+</script>
+</body>
+</html>

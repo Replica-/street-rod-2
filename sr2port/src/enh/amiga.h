@@ -9,7 +9,16 @@
 bool amiga_init(bool enable);
 /* true while the full-colour picture set is in use */
 bool amiga_active(void);
-bool amiga_gfx_present(void);      /* a gfx/ folder (cars.txt) next to the executable or in the working directory */
+bool amiga_gfx_present(void);
+/* ENHANCED (widescreen): the side strips for the shown frame (320 x 200 XRGB) when it shows a full-screen picture that has
+ * them (gfx/wide/<name>_l.bmp, _r.bmp), else NULL */
+struct R3dStrips;
+const struct R3dStrips *amiga_wide_strips(const u32 *frame, int fw, int fh);
+/* the driving car's sprite with its unclipped rect r (pixels; r->dx < 0 = partly left of the screen): the part off the
+ * left edge is kept for the left strip */
+void amiga_sprite_unclipped(FarPtr spr, FarPtr dst, const Rect *r);
+/* a VRAM copy from one page to another (offsets in the 64 KB): the car part kept for the source page goes along */
+void amiga_vram_copied(u32 src_off, u32 dst_off);      /* a gfx/ folder (cars.txt) next to the executable or in the working directory */
 /* pic_get: bitmap bmp now holds picture id. */
 void amiga_note_pic(FarPtr bmp, s16 id);
 /* while pc: the pictures loaded are shown as the game's own (the PC title between the Amiga ones) */

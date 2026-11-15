@@ -419,6 +419,7 @@ s16 ega_sprite_over_bg(FarPtr spr, FarPtr dst, FarPtr bg, const Tail *t, const R
         tsrc = far_make(0, 0);
     }
     Rect c;
+    amiga_sprite_unclipped(spr, dst, r);                  /* ENHANCED (widescreen): the part left of the screen */
     if (!clip_rect(spr, dst, r, &c)) return 0;
     u16 sstr = desc_stride(spr);
     u16 sstep = (u16)(desc_h(spr) * sstr);

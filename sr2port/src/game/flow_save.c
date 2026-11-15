@@ -318,10 +318,13 @@ s16 quit_menu(void)
 {
     s16 x, y, x2, y2;
     u32 t0 = DSL(DS_rt_ticks);
+    u16 scr1 = DSW((u16)(DS_SCREENS + 2));
+    DSW((u16)(DS_SCREENS + 2)) = controls_quit_screen();    /* ENHANCED: with a Controls button */
     FarPtr bg = ui_save_bg(1, &x, &y, 2);
     s16 r;
     for (;;) {
         r = ui_menu(1);
+        if (controls_code(r)) { controls_menu(); continue; }   /* ENHANCED: the Controls menu, then the box again */
         if (r != -0x14) break;
         FarPtr bg2 = ui_save_bg(0x23, &x2, &y2, 2);
         r = ui_menu(0x23);
@@ -331,6 +334,7 @@ s16 quit_menu(void)
     }
     screen_put_bitmap_mirror(bg, x, y);
     arena_pop(1);
+    DSW((u16)(DS_SCREENS + 2)) = scr1;
     DSL(DS_rt_base) += DSL(DS_rt_ticks) - t0;
     return r;
 }

@@ -2,6 +2,13 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Mask editor (mark touch-ups, Send to Claude)",
+            "type": "msedge",
+            "request": "launch",
+            "preLaunchTask": "mask server",
+            "url": "http://localhost:8765/?img=${input:maskPicture}"
+        },
+        {
             "name": "Record video (play, then close the game)",
             "type": "cppdbg",
             "request": "launch",
@@ -117,6 +124,14 @@
             "MIMode": "gdb",
             "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
             "setupCommands": [{ "text": "-enable-pretty-printing", "ignoreFailures": true }]
+        }
+    ],
+    "inputs": [
+        {
+            "id": "maskPicture",
+            "type": "promptString",
+            "description": "Picture to open (a path in the repository)",
+            "default": "work/fooocus/hedge_zoom.png"
         }
     ]
 }

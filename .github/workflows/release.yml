@@ -46,6 +46,7 @@ jobs:
           name="street-rod-2-${GITHUB_REF_NAME//\//-}-windows-x64"
           mkdir -p "dist/$name"
           cp build/*.exe build/*.dll "dist/$name/"
+          cp -r build/assets "dist/$name/"
           cp README.md LICENSE "dist/$name/"
           cp sr2port/third_party/nuked-opl3/LICENSE "dist/$name/LICENSE-Nuked-OPL3.txt"
           # the zip must start on a machine without MSYS2: check that every DLL the programs load is in it

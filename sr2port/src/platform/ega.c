@@ -129,6 +129,17 @@ bool ega_view_fill_shown(void)
  * pixels (platform/shadow.h) go black there too */
 static bool blanked[16];
 
+int ega_shown_page(void) { return start_addr / 0x2000; }
+
+void ega_rgb_now(u32 rgb[16])
+{
+    for (int i = 0; i < 16; i++) {
+        u8 v = palette_reg[i];
+        rgb[i] = ega_palette[(v & 7) | (v >> 1 & 8)] | 0xFF000000u;
+    }
+    if (sh_enabled()) sh_paint_regs(rgb, palette_reg);
+}
+
 static bool compose(u32 *xrgb)
 {
     if (!dirty && !amiga_hands_moving()) return false;   /* ENHANCED (--amiga): the steering wheel's knob gliding */

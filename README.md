@@ -70,6 +70,19 @@ The game logic stays the original's. Enhancements sit on top, and the original l
   the garage juke box opens a menu: "Squelch it !" / "Catch some tunes" or pick one of the songs.
 - Copy protection question skipped.
 
+### Widescreen (experiment)
+
+Widescreen works: on a wide window or screen the garage fills the side bars with painted strips that continue the
+picture, and the car rolls in from the far left over them.
+
+![The garage in widescreen](docs/screenshots/garage_widescreen.png)
+
+The strips were outpainted from the Amiga garage with [Fooocus](https://github.com/lllyasviel/Fooocus) and Python, then
+refined with exact mask prompting: the masks are drawn in a small editor (`tools/mask_editor.html`, served by
+`tools/mask_server.py`) and sent with a description to Claude, which makes each change. The finished pictures live in
+`sr2port/assets/gfx/` and ship with the game. Only the garage is done; the rest of the screens keep black side bars,
+and I won't take this much further for now.
+
 ## Layout
 
 ```text

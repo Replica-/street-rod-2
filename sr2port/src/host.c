@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "opl3.h"
+#include "enh/amiga.h"
 #include "r3d/r3d.h"
 
 #define AUDIO_RATE 49716          /* PORT: the OPL2 sample rate (14.318 MHz / 288), so Nuked-OPL3 runs unresampled */
@@ -47,6 +48,8 @@ static bool (*pointer_query)(s16 *x, s16 *y);
 static u8 script_buttons;                   /* buttons held by the script, OR'd into host_mouse_read */
 
 static void process_events(void);
+static void controls_load(void);
+static char shot_pending[128];                      /* F12: the screenshot to open in the mask editor once saved */
 
 bool host_init(const char *dir, int window_scale, bool fullscreen)
 {
@@ -55,6 +58,7 @@ bool host_init(const char *dir, int window_scale, bool fullscreen)
         return false;
     }
     game_dir = SDL_strdup(dir);
+    controls_load();                                /* ENHANCED: controls.cfg (the garage clock's Controls menu) */
     if (window_scale < 1) window_scale = 3;
     /* ENHANCED: SR_HIDDEN=1 (developer aid) = an invisible window with OpenGL, for headless 3D snapshot runs */
     SDL_WindowFlags hidden = SDL_getenv("SR_HIDDEN") ? SDL_WINDOW_HIDDEN : 0;
@@ -66,6 +70,11 @@ bool host_init(const char *dir, int window_scale, bool fullscreen)
         return false;
     }
     r3d_init(window);                               /* ENHANCED: OpenGL presenter (no context: picture not shown) */
+    {
+        int ww, wh;                                 /* developer aid: SR_WINDOW_SIZE=WxH (e.g. a 16:9 test window) */
+        const char *ws = SDL_getenv("SR_WINDOW_SIZE");
+        if (ws && SDL_sscanf(ws, "%dx%d", &ww, &wh) == 2 && ww > 0 && wh > 0) SDL_SetWindowSize(window, ww, wh);
+    }
     if (fullscreen) SDL_SetWindowFullscreen(window, true);
     host_set_frame_source(NULL, 320, 200);
 
@@ -454,7 +463,15 @@ static void video_close(void)
 
 static void present(void)
 {
+    r3d_set_strips(amiga_wide_strips(frame, frame_w, frame_h));   /* ENHANCED (widescreen): painted side bars */
     r3d_present(frame, frame_w, frame_h);
+    if (r3d_window_shot_done() && shot_pending[0]) {   /* developer aid (F12): annotate it (tools/mask_server.py) */
+        char url[256];
+        SDL_snprintf(url, sizeof url, "http://localhost:8765/?img=%s", shot_pending);
+        fprintf(stderr, "screenshot: %s\n", shot_pending);
+        if (!SDL_getenv("SR_SHOT_NOOPEN")) SDL_OpenURL(url);
+        shot_pending[0] = 0;
+    }
     snapshot();
     video_frame();
 }
@@ -547,6 +564,16 @@ static void scripted_keys(void)
     if (end == spec || *end != ':') { spec = NULL; return; }
     if (script_seconds() < at) return;
     const char *p = end + 1;
+    if (*p == 'k') {                                /* k<SDL scancode, decimal>: a real key press (it goes through key_event) */
+        SDL_Event ev;
+        SDL_zero(ev);
+        ev.key.scancode = (SDL_Scancode)SDL_strtoul(p + 1, &end, 10);
+        ev.type = SDL_EVENT_KEY_DOWN; ev.key.down = true; SDL_PushEvent(&ev);
+        ev.type = SDL_EVENT_KEY_UP; ev.key.down = false; SDL_PushEvent(&ev);
+        p = end;
+        spec = *p == ',' ? p + 1 : NULL;
+        return;
+    }
     if (*p == 'm' || *p == 'c' || *p == 'C' || *p == 'l' || *p == 'r') {
         p = script_mouse(p);
         spec = *p == ',' ? p + 1 : NULL;
@@ -599,7 +626,7 @@ void host_pump(void)
      * (it moves between the game's frames). */
     if (frame_source && now - last_present_ns >= 8 * SDL_NS_PER_MS && !vsync_locked(now)) {
         bool changed = frame_source(frame);
-        if (changed || r3d_view_live()) {
+        if (changed || r3d_view_live() || shot_pending[0]) {   /* (F12: a present for the screenshot) */
             present();
             last_present_ns = SDL_GetTicksNS();
             worked = true;
@@ -750,8 +777,126 @@ static void feed(const u8 *bytes, int n)
     for (int i = 0; i < n; i++) kbd_handler(bytes[i]);
 }
 
+/* ---------------------------------------------------------------- ENHANCED: controls (host.h) */
+
+static const SDL_Scancode ctl_default[HC_KEYS] = { SDL_SCANCODE_UP, SDL_SCANCODE_DOWN, SDL_SCANCODE_LEFT, SDL_SCANCODE_RIGHT,
+                                                   SDL_SCANCODE_SPACE, SDL_SCANCODE_A, SDL_SCANCODE_Z };
+static const char *const ctl_name[HC_KEYS] = { "Accelerate", "Brake", "Steer left", "Steer right", "Shift gear",
+                                               "Gear up", "Gear down" };
+static SDL_Scancode ctl_key[HC_KEYS] = { SDL_SCANCODE_UP, SDL_SCANCODE_DOWN, SDL_SCANCODE_LEFT, SDL_SCANCODE_RIGHT,
+                                         SDL_SCANCODE_SPACE, SDL_SCANCODE_A, SDL_SCANCODE_Z };
+static bool pad_on = true;
+static SDL_GamepadButton pad_gear[2] = { SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER };  /* down, up */
+static int capture_kind = -1, capture_state, capture_code;
+
+const char *host_control_name(int a) { return a >= 0 && a < HC_KEYS ? ctl_name[a] : ""; }
+const char *host_control_key(int a)
+{
+    if (a < 0 || a >= HC_KEYS) return "";
+    const char *n = SDL_GetScancodeName(ctl_key[a]);
+    return n && *n ? n : "?";
+}
+void host_control_set_key(int a, int sc) { if (a >= 0 && a < HC_KEYS && sc > 0 && sc < SDL_SCANCODE_COUNT) ctl_key[a] = (SDL_Scancode)sc; }
+bool host_pad_enabled(void) { return pad_on; }
+void host_pad_enable(bool on) { pad_on = on; }
+const char *host_pad_button(int up)
+{
+    const char *n = SDL_GetGamepadStringForButton(pad_gear[up ? 1 : 0]);
+    return n ? n : "?";
+}
+void host_pad_set_button(int up, int b) { if (b >= 0 && b < SDL_GAMEPAD_BUTTON_COUNT) pad_gear[up ? 1 : 0] = (SDL_GamepadButton)b; }
+void host_controls_reset(void)
+{
+    for (int a = 0; a < HC_KEYS; a++) ctl_key[a] = ctl_default[a];
+    pad_on = true;
+    pad_gear[0] = SDL_GAMEPAD_BUTTON_LEFT_SHOULDER;
+    pad_gear[1] = SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER;
+}
+
+static const char *const ctl_cfg_key[HC_KEYS] = { "accelerate", "brake", "steer_left", "steer_right", "shift", "gear_up",
+                                                  "gear_down" };
+
+void host_controls_save(void)
+{
+    char *path = host_game_path("controls.cfg", true);
+    if (!path) return;
+    FILE *f = fopen(path, "w");
+    SDL_free(path);
+    if (!f) return;
+    fprintf(f, "# Street Rod 2 controls (the garage clock's Controls menu)\n");
+    for (int a = 0; a < HC_KEYS; a++) fprintf(f, "%s=%s\n", ctl_cfg_key[a], SDL_GetScancodeName(ctl_key[a]));
+    fprintf(f, "controller=%s\n", pad_on ? "on" : "off");
+    fprintf(f, "pad_gear_up=%s\n", SDL_GetGamepadStringForButton(pad_gear[1]));
+    fprintf(f, "pad_gear_down=%s\n", SDL_GetGamepadStringForButton(pad_gear[0]));
+    fclose(f);
+}
+
+static void controls_load(void)
+{
+    char *path = host_game_path("controls.cfg", false);
+    if (!path) return;
+    FILE *f = fopen(path, "r");
+    SDL_free(path);
+    if (!f) return;
+    char line[160];
+    while (fgets(line, sizeof line, f)) {
+        char *eq = strchr(line, '='), *nl = strpbrk(line, "\r\n");
+        if (nl) *nl = 0;
+        if (line[0] == '#' || !eq) continue;
+        *eq = 0;
+        const char *v = eq + 1;
+        for (int a = 0; a < HC_KEYS; a++)
+            if (!strcmp(line, ctl_cfg_key[a])) {
+                SDL_Scancode sc = SDL_GetScancodeFromName(v);
+                if (sc != SDL_SCANCODE_UNKNOWN) ctl_key[a] = sc;
+            }
+        if (!strcmp(line, "controller")) pad_on = strcmp(v, "off") != 0;
+        if (!strcmp(line, "pad_gear_up") || !strcmp(line, "pad_gear_down")) {
+            SDL_GamepadButton b = SDL_GetGamepadButtonFromString(v);
+            if (b != SDL_GAMEPAD_BUTTON_INVALID) pad_gear[line[9] == 'u' ? 1 : 0] = b;
+        }
+    }
+    fclose(f);
+}
+
+void host_capture_begin(int pad) { capture_kind = pad ? 1 : 0; capture_state = 0; }
+int host_capture_poll(int *code)
+{
+    process_events();
+    if (capture_state == 0) return 0;
+    int st = capture_state;
+    if (code) *code = capture_code;
+    capture_kind = -1;
+    capture_state = 0;
+    return st;
+}
+
 static void key_event(SDL_Scancode sc, bool down)
 {
+    if (capture_kind >= 0) {                        /* ENHANCED: "press a key" (Esc cancels, also for a pad button) */
+        if (down && capture_state == 0) {
+            if (sc == SDL_SCANCODE_ESCAPE) capture_state = -1;
+            else if (capture_kind == 0) { capture_state = 1; capture_code = sc; }
+        }
+        return;
+    }
+    if (sc == SDL_SCANCODE_F12) {                   /* developer aid: the window to work/shots, opened in the mask editor */
+        if (down) {
+            char path[128];
+            SDL_CreateDirectory("work/shots");
+            SDL_Time t;
+            SDL_DateTime dt;
+            SDL_GetCurrentTime(&t);
+            SDL_TimeToDateTime(t, &dt, true);
+            SDL_snprintf(path, sizeof path, "work/shots/shot_%04d-%02d-%02d_%02d-%02d-%02d-%03d.bmp", dt.year, dt.month, dt.day,
+                         dt.hour, dt.minute, dt.second, dt.nanosecond / 1000000);
+            SDL_strlcpy(shot_pending, path, sizeof shot_pending);
+            r3d_request_window_shot(path);
+        }
+        return;
+    }
+    for (int a = 0; a < HC_KEYS; a++)               /* ENHANCED: a key chosen for an action acts as the game's key */
+        if (ctl_key[a] != ctl_default[a] && sc == ctl_key[a]) { sc = ctl_default[a]; break; }
     if (sc == SDL_SCANCODE_PAUSE) {                 /* make only, no break sequence */
         static const u8 pause[] = { 0xE1, 0x1D, 0x45, 0xE1, 0x9D, 0xC5 };
         if (down) feed(pause, sizeof pause);
@@ -820,6 +965,18 @@ static void process_events(void)
                 }
             }
             break;
+        case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+        case SDL_EVENT_GAMEPAD_BUTTON_UP: {         /* ENHANCED: gear up / down buttons = the A / Z keys */
+            bool down = ev.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+            if (capture_kind == 1) {
+                if (down && capture_state == 0) { capture_state = 1; capture_code = ev.gbutton.button; }
+                break;
+            }
+            if (!pad_on) break;
+            u8 sc = ev.gbutton.button == pad_gear[1] ? 0x1E : ev.gbutton.button == pad_gear[0] ? 0x2C : 0;
+            if (sc) { u8 b = (u8)(down ? sc : sc | 0x80); feed(&b, 1); }
+            break;
+        }
         case SDL_EVENT_GAMEPAD_ADDED:
             if (!gamepad) gamepad = SDL_OpenGamepad(ev.gdevice.which);
             break;
@@ -875,7 +1032,7 @@ void host_mouse_set_relative(bool on)
 
 bool host_joy_read(s16 *x, s16 *y, u8 *buttons)
 {
-    if (!gamepad) return false;
+    if (!gamepad || !pad_on) return false;          /* ENHANCED: the controller can be switched off */
     s16 ax = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTX);
     s16 ay = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTY);
     if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT))  ax = -32768;

@@ -25,7 +25,10 @@ void ega_set_start(u16 offset);              /* CRTC start address (bytes) */
 void ega_set_line_compare(int line);         /* first screen row (0..199) shown from offset 0; >= 200 = off */
 void ega_touch(void);                        /* marks the screen changed (after writes to the planes) */
 void ega_set_page_mask(int page, const u8 *mask);   /* ENHANCED: 320x200 see-through mask of a page, NULL = none */
-bool ega_view_fill_shown(void);                     /* ENHANCED: the shown page's see-through area still the fill */
+bool ega_view_fill_shown(void);
+/* the 16 colours the screen is shown with now (0xFFRRGGBB, the car's paint included) */
+void ega_rgb_now(u32 rgb[16]);
+int ega_shown_page(void);           /* the page the screen shows (start address / 2000h) */                     /* ENHANCED: the shown page's see-through area still the fill */
 
 /* Palette register 0..15 = value as the attribute controller holds it: bits 0-2 = BGR, bit 4 =
  * intensity (the 200-line interpretation of mode 0Dh; the game ORs 10h into values 8..15), register 16 =

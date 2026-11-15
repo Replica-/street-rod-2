@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "host.h"
+#include "enh/amiga.h"
 #include "platform/ega.h"
 #include "platform/shadow.h"
 
@@ -184,6 +185,7 @@ void vga_wr(u16 off, u8 v)
 void vmovedata(u16 sseg, u16 soff, u16 dseg, u16 doff, u16 n)
 {
     bool both = is_vram(sseg) && is_vram(dseg);
+    if (both && n) amiga_vram_copied(vram_off(sseg, soff), vram_off(dseg, doff));   /* ENHANCED (widescreen) */
     while (n--) {
         u8 b = vrd(sseg, soff);
         vwr(dseg, doff, b);

@@ -313,6 +313,127 @@ void r3d_vsync_lock(bool on)
     if (SDL_GL_SetSwapInterval(want)) cur = want;
 }
 
+static R3dStrips strips;
+static bool strips_on;
+static GLuint strip_tex[2], car_tex;
+static const uint32_t *strip_loaded[2];
+
+static char shot_path[512];
+static bool shot_req, shot_done;
+
+void r3d_request_window_shot(const char *path)
+{
+    SDL_strlcpy(shot_path, path, sizeof shot_path);
+    shot_req = true;
+}
+
+bool r3d_window_shot_done(void)
+{
+    bool d = shot_done;
+    shot_done = false;
+    return d;
+}
+
+/* the window's back buffer (what is about to be shown) to shot_path */
+static void window_shot(int pw, int ph)
+{
+    shot_req = false;
+    SDL_Surface *s = SDL_CreateSurface(pw, ph, SDL_PIXELFORMAT_ABGR8888);
+    uint8_t *tmp = malloc((size_t)pw * ph * 4);
+    if (s && tmp) {
+        gl.BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+        gl.ReadPixels(0, 0, pw, ph, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
+        for (int y = 0; y < ph; y++)                           /* GL rows are bottom-up */
+            SDL_memcpy((uint8_t *)s->pixels + (size_t)y * s->pitch, tmp + (size_t)(ph - 1 - y) * pw * 4, (size_t)pw * 4);
+        for (int i = 0; i < pw * ph; i++) ((uint8_t *)s->pixels)[(i / pw) * s->pitch + (i % pw) * 4 + 3] = 255;
+        shot_done = SDL_SaveBMP(s, shot_path);
+    }
+    free(tmp);
+    if (s) SDL_DestroySurface(s);
+}
+
+void r3d_set_strips(const R3dStrips *s)
+{
+    strips_on = s != NULL;
+    if (s) strips = *s;
+}
+
+/* the strip textures (uploaded once per picture) and the two side quads in the window's bars */
+static void strips_draw(float lx, float ly, float lw, float lh, int ph)
+{
+    if (!strips_on) return;
+    const uint32_t *px[2] = { strips.l, strips.r };
+    int tw[2] = { strips.lw, strips.rw }, th[2] = { strips.lh, strips.rh };
+    float sw = (float)strips.game_w * lw / 320.0f, sh = (float)strips.rows * lh / 200.0f;
+    for (int k = 0; k < 2; k++) {
+        if (!px[k]) continue;
+        if (!strip_tex[k]) {
+            gl.GenTextures(1, &strip_tex[k]);
+            gl.BindTexture(GL_TEXTURE_2D, strip_tex[k]);
+            gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        }
+        gl.ActiveTexture(GL_TEXTURE0);
+        gl.BindTexture(GL_TEXTURE_2D, strip_tex[k]);
+        if (strip_loaded[k] != px[k]) {
+            gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+            gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tw[k], th[k], 0, GL_BGRA, GL_UNSIGNED_BYTE, px[k]);
+            strip_loaded[k] = px[k];
+        }
+        float x0 = k == 0 ? lx - sw : lx + lw;
+        gl.Viewport((GLint)x0, (GLint)((float)ph - ly - sh), (GLsizei)sw, (GLsizei)sh);
+        gl.UseProgram(frame_prog);
+        gl.Uniform1i(frame_loc_tex, 0);
+        gl.Uniform1i(frame_loc_keyed, 0);
+        gl.BindVertexArray(vao);
+        gl.DrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
+    if (strips.car && strips.car_w > 0 && strips.car_h > 0) {   /* the driving car, left of the picture */
+        if (!car_tex) {
+            gl.GenTextures(1, &car_tex);
+            gl.BindTexture(GL_TEXTURE_2D, car_tex);
+            gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        }
+        gl.ActiveTexture(GL_TEXTURE0);
+        gl.BindTexture(GL_TEXTURE_2D, car_tex);
+        gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, strips.car_w, strips.car_h, 0, GL_BGRA, GL_UNSIGNED_BYTE, strips.car);
+        float cx = lx + (float)strips.car_x * lw / 320.0f, cw = (float)strips.car_w * lw / 320.0f;
+        float cy = ly + (float)strips.car_y * lh / 200.0f, ch = (float)strips.car_h * lh / 200.0f;
+        gl.Enable(GL_SCISSOR_TEST);                        /* only in the left bar */
+        gl.Scissor(0, 0, (GLsizei)lx, ph);
+        gl.Viewport((GLint)cx, (GLint)((float)ph - cy - ch), (GLsizei)cw, (GLsizei)ch);
+        gl.Enable(GL_BLEND);
+        gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        gl.UseProgram(frame_prog);
+        gl.Uniform1i(frame_loc_tex, 0);
+        gl.Uniform1i(frame_loc_keyed, 1);                    /* its alpha: see-through around the car */
+        gl.BindVertexArray(vao);
+        gl.DrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        gl.Disable(GL_BLEND);
+        gl.Disable(GL_SCISSOR_TEST);
+    }
+    if (strips.below) {                                    /* the status line's band continued under the strips */
+        GLint y0 = (GLint)((float)ph - ly - lh), hh = (GLint)(lh - sh);
+        gl.Enable(GL_SCISSOR_TEST);
+        gl.ClearColor((float)(strips.below >> 16 & 255) / 255.0f, (float)(strips.below >> 8 & 255) / 255.0f,
+                      (float)(strips.below & 255) / 255.0f, 1);
+        gl.Scissor(0, y0, (GLsizei)lx, hh);
+        gl.Clear(GL_COLOR_BUFFER_BIT);
+        gl.Scissor((GLint)(lx + lw), y0, (GLsizei)lx + 2, hh);
+        gl.Clear(GL_COLOR_BUFFER_BIT);
+        gl.Disable(GL_SCISSOR_TEST);
+        gl.ClearColor(0, 0, 0, 1);
+    }
+    gl.Viewport(0, 0, (GLsizei)(lx * 2 + lw), ph);
+}
+
 void r3d_present(const uint32_t *frame, int fw, int fh)
 {
     if (!ctx) return;
@@ -393,6 +514,8 @@ void r3d_present(const uint32_t *frame, int fw, int fh)
     int dx = (int)lx, dy = (int)(ph - ly - lh);
     gl.BlitFramebuffer(0, 0, w, h, dx, dy, dx + (int)lw, dy + (int)lh, GL_COLOR_BUFFER_BIT, GL_LINEAR);
     gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (lx >= 1) strips_draw(lx, ly, lw, lh, ph);          /* ENHANCED (widescreen): the side bars painted */
+    if (shot_req) window_shot(pw, ph);
     SDL_GL_SwapWindow(win);
 }
 

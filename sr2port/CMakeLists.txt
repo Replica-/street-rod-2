@@ -32,6 +32,9 @@ else()
         target_compile_options(sr2port PRIVATE -Wno-format-truncation)
     endif()
 endif()
+# hand-edited replacement pictures (enh/amiga.c loads them before the generated gfx/ set)
+add_custom_command(TARGET sr2port POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/assets $<TARGET_FILE_DIR:sr2port>/assets)
 if(WIN32)
     add_custom_command(TARGET sr2port POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_RUNTIME_DLLS:sr2port> $<TARGET_FILE_DIR:sr2port>

@@ -38,6 +38,9 @@ s16  car_runnable(u16 car, s16 full);         /* 0001:7a44 */
 
 void newspaper_front(void);                   /* 0001:3e30: front page; menu 3 (1 Used Cars, 2 Auto Parts) runs classifieds() itself */
 void classifieds(s16 section, s16 reroll);    /* 0001:11a2: 1 Used Cars, 2 Auto Parts; reroll != 0: a new week of ads */
+void controls_menu(void);                     /* ENHANCED: garage_controls.c */
+u16  controls_quit_screen(void);
+bool controls_code(s16 r);
 bool jukebox_menu_on(void);                   /* ENHANCED: garage_jukebox.c */
 void jukebox_menu(void);
 void sell_spare_parts(void);                  /* 0001:3f5a: garage code 5 */

@@ -12,6 +12,17 @@
             "problemMatcher": ["$gcc"]
         },
         {
+            "label": "mask server",
+            "type": "shell",
+            "command": "python tools/mask_server.py",
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "mask-server",
+                "pattern": { "regexp": "^__never__$" },
+                "background": { "activatesOnStart": true, "beginsPattern": "^Mask editor", "endsPattern": "^Mask editor" }
+            }
+        },
+        {
             "label": "recording: prepare",
             "type": "shell",
             "command": "New-Item -ItemType Directory -Force work/recording | Out-Null; Remove-Item -ErrorAction SilentlyContinue work/recording/raw.mp4, work/recording/raw.wav",

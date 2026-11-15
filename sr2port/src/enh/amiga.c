@@ -28,6 +28,7 @@
 #include "platform/ega.h"
 #include "platform/shadow.h"
 #include "platform/video.h"
+#include "r3d/r3d.h"
 
 static bool on;
 static char dir[1024];
@@ -40,8 +41,14 @@ static bool load_img(Img *im, const char *name)
     if (im->tried) return im->px != NULL;
     im->tried = true;
     char path[1200];
-    SDL_snprintf(path, sizeof path, "%s/%s", dir, name);
+    /* ENHANCED: a hand-edited replacement shipped with the game (sr2port/assets/gfx, copied beside the executable)
+     * before the generated picture set */
+    SDL_snprintf(path, sizeof path, "%sassets/gfx/%s", SDL_GetBasePath() ? SDL_GetBasePath() : "", name);
     SDL_Surface *s = SDL_LoadBMP(path);
+    if (!s) {
+        SDL_snprintf(path, sizeof path, "%s/%s", dir, name);
+        s = SDL_LoadBMP(path);
+    }
     if (!s) return false;
     if (SDL_BITSPERPIXEL(s->format) <= 8) { SDL_DestroySurface(s); return false; }
     SDL_Surface *c = SDL_ConvertSurface(s, SDL_PIXELFORMAT_ARGB8888);
@@ -464,8 +471,9 @@ static u32 src_px(const Src *s, int x, int y)
     case SRC_PIC:
         if (x >= s->img->w || y >= s->img->h) return SH_GAME;
         if (!(s->img->px[y * s->img->w + x] >> 24)) return SH_KEEP;   /* see-through: the picture is hidden there */
-        if ((s->img->px[y * s->img->w + x] >> 24) == 254)              /* the car's paint (the dashboards' top band) */
-            return SH_PAINT(7) | (s->img->px[y * s->img->w + x] & 0xFFFFFF);
+        if ((s->img->px[y * s->img->w + x] >> 24) == 254)      /* the car's paint (the dashboards' top band, the paint can):
+                                                                 * the brighter of the player's pair 6 / 7, as the car */
+            return SH_PAINT(value_of(live_rgb(6)) > value_of(live_rgb(7)) ? 6 : 7) | (s->img->px[y * s->img->w + x] & 0xFFFFFF);
         return SH_RGB | (s->img->px[y * s->img->w + x] & 0xFFFFFF);
     default:
         return SH_GAME;
@@ -602,6 +610,104 @@ void amiga_cache_begin(FarPtr frame, FarPtr tp, u16 stride, s16 rows, s16 frow0,
 void amiga_cache_end(void)
 {
     sh_end();
+}
+
+/* ---------------------------------------------------------------- widescreen strips */
+
+/* ENHANCED (widescreen): painted strips (outpainted from the picture) for the window's side bars while a full-screen
+ * picture is shown; whether it is shown is checked on the frame itself (its ceiling rows and edge columns match the
+ * picture), so page copies, wipes and dialogs over the middle need no tracking */
+static struct { s16 pic; const char *name; Img l, r; } wide[] = { { 1018, "garage", { 0 }, { 0 } } };
+
+/* the part of the driving car left of the screen (game pixels), in full colour */
+#define OFFCAR_W 240
+static struct { u32 px[OFFCAR_W * 120]; int w, h, x, y; Uint64 ns; } offcars[4];   /* per page: the one shown is used, so
+                                                                                     * the strip's part and the picture's part are the same step */
+
+void amiga_sprite_unclipped(FarPtr spr, FarPtr dst, const Rect *r)
+{
+    if (!on || !r || !is_vram(dst)) return;
+    Src s;
+    src_resolve(&s, spr, true);
+    if (s.kind != SRC_CAR) return;
+    int page = (int)(vram_base(dst) / 0x2000) & 3;
+    #define offcar offcars[page]
+    if (r->dx >= 0) { offcar.w = 0; offcar.ns = SDL_GetTicksNS(); return; }   /* all on screen */
+    int left = r->dx - r->sx, top = r->dy - r->sy;       /* the frame's (0, 0) on the screen */
+    int w = -left, h = (int)desc_h(spr);
+    if (w > OFFCAR_W) w = OFFCAR_W;
+    if (h > 120) h = 120;
+    u32 rgb[16];
+    ega_rgb_now(rgb);
+    /* the sprite's mask as ega_sprite_over_bg reads it: in the planes' segment at the mask's offset, one plane, a set bit
+     * = the background shows (bg & mask) */
+    FarPtr spl = desc_planes(spr);
+    u32 mk = lin(spl.seg, desc_mask(spr).off), st = desc_stride(spr);
+    bool has_mask = desc_mask(spr).off != 0 || desc_mask(spr).seg != 0;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            u32 *o = &offcar.px[y * w + x];
+            if (has_mask && (mem[mk + (u32)y * st + (u32)(x >> 3)] & (0x80 >> (x & 7)))) { *o = 0; continue; }
+            if (src_clear(&s, x, y)) { *o = 0; continue; }
+            u32 v = src_px(&s, x, y);
+            if (v == SH_GAME || v == SH_KEEP || v == SH_NONE) {
+                int c = bmp_px(spr, x, y);
+                *o = c >= 0 ? rgb[c & 15] : 0;
+            } else *o = sh_colour(v, rgb) | 0xFF000000u;
+        }
+    for (int x = 0; x < w; x++) {                         /* padding columns of the frame (all black, no mask): never on
+                                                           * screen in the original, so see-through here */
+        bool any = false;
+        for (int y = 0; y < h && !any; y++) any = (offcar.px[y * w + x] & 0xFFFFFF) != 0;
+        if (!any) for (int y = 0; y < h; y++) offcar.px[y * w + x] = 0;
+    }
+    offcar.w = w;
+    offcar.h = h;
+    offcar.x = left;
+    offcar.y = top;
+    offcar.ns = SDL_GetTicksNS();
+    #undef offcar
+}
+
+void amiga_vram_copied(u32 src_off, u32 dst_off)
+{
+    int s = (int)(src_off / 0x2000) & 3, d = (int)(dst_off / 0x2000) & 3;
+    if (s == d || offcars[s].ns <= offcars[d].ns) return;    /* (a copy is many calls: once per newer source) */
+    offcars[d] = offcars[s];
+}
+
+const R3dStrips *amiga_wide_strips(const u32 *frame, int fw, int fh)
+{
+    static R3dStrips st;
+    if (!on || !frame || fw != 320 || fh != 200) return NULL;
+    for (size_t k = 0; k < SDL_arraysize(wide); k++) {
+        Img *pic = &pic_img[wide[k].pic];
+        char name[64];
+        SDL_snprintf(name, sizeof name, "pic_%d.bmp", wide[k].pic);
+        if (!load_img(pic, name) || pic->w != 320) continue;
+        int n = 0, hit = 0;
+        for (int y = 2; y < 44 && y < pic->h; y += 6)                     /* the ceiling */
+            for (int x = 8; x < 320; x += 24, n++) hit += (frame[y * 320 + x] & 0xFFFFFF) == (pic->px[y * 320 + x] & 0xFFFFFF);
+        for (int y = 50; y < pic->h; y += 10)                              /* the edge columns */
+            for (int x = 2; x < 320; x += 312, n++) hit += (frame[y * 320 + x] & 0xFFFFFF) == (pic->px[y * 320 + x] & 0xFFFFFF);
+        if (hit * 100 < n * 85) continue;
+        SDL_snprintf(name, sizeof name, "wide/%s_l.bmp", wide[k].name);
+        load_img(&wide[k].l, name);
+        SDL_snprintf(name, sizeof name, "wide/%s_r.bmp", wide[k].name);
+        load_img(&wide[k].r, name);
+        if (!wide[k].l.px && !wide[k].r.px) return NULL;
+        st.l = wide[k].l.px; st.lw = wide[k].l.w; st.lh = wide[k].l.h;
+        st.r = wide[k].r.px; st.rw = wide[k].r.w; st.rh = wide[k].r.h;
+        st.game_w = (wide[k].l.px ? wide[k].l.w : wide[k].r.w) * 320 / 1280;   /* made at 4 x the picture's width */
+        st.rows = pic->h;
+        st.below = frame[196 * 320] & 0xFFFFFF;           /* the status line's colour at its left end */
+        int sp_ = ega_shown_page() & 3;
+        bool car = offcars[sp_].w > 0 && SDL_GetTicksNS() - offcars[sp_].ns < 400 * SDL_NS_PER_MS;
+        st.car = car ? offcars[sp_].px : NULL;
+        st.car_w = offcars[sp_].w; st.car_h = offcars[sp_].h; st.car_x = offcars[sp_].x; st.car_y = offcars[sp_].y;
+        return &st;
+    }
+    return NULL;
 }
 
 /* ---------------------------------------------------------------- the paint swatch (paint job) */

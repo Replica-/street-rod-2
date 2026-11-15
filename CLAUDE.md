@@ -31,3 +31,11 @@ Token budget rules:
   one, each behind a switch with the original as fallback (`--classic`). New ideas: a row in PLAN.md "Enhanced backlog".
 - Game data is never committed (`Game/` is git-ignored).
 - No test HTML pages; implement, then tell the user what to test.
+- Picture touch-ups from the user: they mark them in the mask editor (launch.json "Mask editor": `tools/mask_server.py`
+  serves `tools/mask_editor.html` at `http://localhost:8765/?img=<repo path>`) and press Send to Claude. Each submission
+  is a folder `work/edits/<date-time>_<picture>/`: `picture.png`, `mask_<n>.png` (white = change, picture resolution),
+  `marked.png`, `request.txt` (one line per touch-up). Run `bash tools/mask_watch.sh` in the background: it prints every
+  submission not in `work/edits/done.txt` (all touch-ups); action each touch-up in order, append the folder to done.txt, rerun.
+  F12 in the game saves the whole window (side strips included) to `work/shots/` and opens it in the editor.
+  Edited pictures go to `sr2port/assets/gfx/` (same names as gfx/, e.g. `pic_1018.bmp`, `wide/garage_l.bmp`): the game
+  loads them before the generated gfx/ set (enh/amiga.c), the build copies them beside the exe, the release ships them.
