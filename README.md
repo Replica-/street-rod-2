@@ -1,4 +1,4 @@
-# Street Rod 2: The Next Generation — SDL3 port
+# Street Rod 2: The Next Generation — Enhanced QOL SDL3 Port
 
 A faithful native port (C, SDL3) of California Dreams' *Street Rod 2: The Next Generation* (1991),
 in the making. Not an emulator. It builds on the engine of the
