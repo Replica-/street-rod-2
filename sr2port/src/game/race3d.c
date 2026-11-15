@@ -356,7 +356,7 @@ static int build_objects(void)
         if (R & 0x1000) ADD(xr, 6, -1);
         if (!(mode & 6) && (R & 1) && cross) ADDL(xr, SIGN_LEFT, 1, 50);
         if (!(mode & 6) && (R & 1) && !cross && flat_r) ADD(xr, 1, -1);
-        if ((C & 0xF000) && !(mode & 0x16)) {                  /* gantry sign (banner 55ce), at the bar 400 up */
+        if ((C & 0xF000) && !(mode & 0x1E)) {                  /* gantry sign (banner 55ce), at the bar 400 up; ENHANCED: none over the Aqueduct */
             int mid = (xl + xr) >> 1;
             if (C & 0x1000) ADDL(mid, 0x0D, 1, 400);
             else if (!(C & 0x2000)) {
@@ -384,7 +384,7 @@ static void push_scenery(void)
     u32 rgb[16];
     live_palette(rgb);
     for (int t = 0; t < 23; t++) upload_shape(t, rgb);          /* cheap; hashed by r3d */
-    if (!(MODE & 0x16)) upload_signs(rgb);
+    if (!(MODE & 0x1E)) upload_signs(rgb);
     if (sum == last_sum && MODE == last_mode) return;
     last_sum = sum;
     last_mode = MODE;
@@ -432,7 +432,7 @@ static void tree_sprite(R3dSprite *o)
 static void push_sky(void)
 {
     static u32 sky[320 * 90];
-    if (MODE == 8) { r3d_sky_upload(NULL, 0, 0, 0); return; }
+    if (MODE == 8) { r3d_sky_upload(NULL, 0, 0, 0); return; }   /* (the gradient: colour 0, scene.c) */
     FarPtr pg = desc_planes(ds_far(DS_page1_ptr));
     u32 base = (u32)(pg.seg - 0xA000) * 16u + pg.off;
     u32 rgb[16];
@@ -452,6 +452,16 @@ static void push_sky(void)
             for (int pl = 0; pl < 4; pl++) if (ega_plane(pl)[o] & bit) c |= 1 << pl;
             sky[k * 320 + x] = rgb[c];
         }
+    /* ENHANCED: the sky's own colour (the commonest of the top row) see-through: the gradient shows there */
+    int cnt[16] = { 0 }, top = 0;
+    u32 key[16];
+    for (int x = 0; x < 320; x++)
+        for (int c = 0; c < 16; c++)
+            if (sky[x] == rgb[c]) { cnt[c]++; break; }
+    for (int c = 1; c < 16; c++) if (cnt[c] > cnt[top]) top = c;
+    for (int c = 0; c < 16; c++) key[c] = rgb[c];
+    for (int i = 0; i < 320 * n; i++) if (sky[i] == key[top]) sky[i] &= 0x00FFFFFFu;
+    r3d_sky_base(key[top] & 0xFFFFFFu);
     r3d_sky_upload(sky, 320, n, horizon);
 }
 

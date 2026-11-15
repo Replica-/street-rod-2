@@ -624,11 +624,21 @@ static void build_channel(int first, int last, const R3dView *v)
     for (int i = first; i < last; i++) {
         float p0 = (float)i, p1 = (float)(i + 1);
         unsigned f = trk.c[i];
-        band(p0, p1, fl, fr, fh, fh, fh, fh, PC((f & 0x400) ? 15 : 5));
+        if (f & 0x400) band(p0, p1, fl, fr, fh, fh, fh, fh, PC(15));
+        else {                                                 /* ENHANCED: the concrete floor, darker at its edges */
+            float tone = (i / 3) & 1 ? 1.0f : 0.93f;
+            const float ke[4] = { 0.70f * tone, 1.0f * tone, 1.0f * tone, 0.70f * tone };
+            const float kc[4] = { 1.0f * tone, 0.70f * tone, 0.70f * tone, 1.0f * tone };
+            band_k(p0, p1, fl, mid, fh, fh, fh, fh, PC(5), ke);
+            band_k(p0, p1, mid, fr, fh, fh, fh, fh, PC(5), kc);
+        }
         if (!(f & 2)) band(p0, p1, mid - 0x28, mid + 0x28, fh + 2, fh + 2, fh + 2, fh + 2, PC(2));
         if (f & 1) band(p0, p0 + 0.06f, fl, fr, fh + 3, fh + 3, fh + 3, fh + 3, PC(2));
-        band(p0, p1, tl, fl, th, fh, th, fh, PC((f & (4 | 0x100)) ? 0 : 5));
-        band(p0, p1, fr, tr, fh, th, fh, th, PC((f & (8 | 0x200)) ? 0 : 5));
+        /* ENHANCED: the sloped walls lit as the hillsides */
+        if (f & (4 | 0x100)) band(p0, p1, tl, fl, th, fh, th, fh, PC(0));
+        else hill(i, p0, p1, tl, fl, th, fh, th, fh, PC(5));
+        if (f & (8 | 0x200)) band(p0, p1, fr, tr, fh, th, fh, th, PC(0));
+        else hill(i, p0, p1, fr, tr, fh, th, fh, th, PC(5));
         band(p0, p1, X_MID - FAR_X, tl, th, th, th, th, PC(0));
         band(p0, p1, tr, X_MID + FAR_X, th, th, th, th, PC(0));
     }
@@ -694,16 +704,93 @@ void r3d_sky_upload(const uint32_t *bgra, int w, int h, int horizon_row)
     gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, bgra);
 }
 
+/* ENHANCED: a gradient dome behind the panorama (its sky colour is see-through): a glow at the horizon, darker
+ * overhead, from the game's sky colour (the Aqueduct: colour 0, its night) or the weather / time of day */
+static float sky_base[3];
+static bool sky_base_set;
+static float sky_zen[3], sky_hor[3];
+
+void r3d_sky_base(uint32_t rgb)
+{
+    sky_base[0] = (float)(rgb >> 16 & 255) / 255.0f;
+    sky_base[1] = (float)(rgb >> 8 & 255) / 255.0f;
+    sky_base[2] = (float)(rgb & 255) / 255.0f;
+    sky_base_set = true;
+}
+
+static void sky_colours(const float *s)
+{
+    float l = 0.3f * s[0] + 0.59f * s[1] + 0.11f * s[2];
+    if (rain) {
+        const float h[3] = { 0.56f, 0.59f, 0.63f }, z[3] = { 0.34f, 0.38f, 0.44f };
+        memcpy(sky_hor, h, sizeof h); memcpy(sky_zen, z, sizeof z);
+    } else if (tod == 1) {
+        const float h[3] = { 0.98f, 0.58f, 0.34f }, z[3] = { 0.22f, 0.20f, 0.42f };
+        memcpy(sky_hor, h, sizeof h); memcpy(sky_zen, z, sizeof z);
+    } else if (tod == 2 || l < 0.12f) {                       /* night: a deep blue glow low down, black above */
+        for (int k = 0; k < 3; k++) sky_zen[k] = s[k] * 0.4f + (k == 2 ? 0.035f : 0.008f);
+        sky_hor[0] = s[0] + 0.10f; sky_hor[1] = s[1] + 0.11f; sky_hor[2] = s[2] + 0.27f;
+    } else {                                                   /* day: pale at the horizon, deeper overhead */
+        for (int k = 0; k < 3; k++) {
+            sky_hor[k] = fminf(s[k] * 0.75f + 0.28f, 1.0f);
+            sky_zen[k] = s[k] * 0.55f;
+        }
+    }
+}
+
+static void sky_dome(const float *mvp, const float *eye, float bot)
+{
+    enum { LON = 48, LAT = 10 };
+    static Vert dome[LON * (LAT + 1) * 6];
+    int n = 0;
+    float el_bot = atan2f(bot - eye[1], SKY_R);
+    for (int j = 0; j <= LAT; j++) {
+        /* ring j: from el0 to el1 (ring 0: the panorama's bottom to the horizon, one colour) */
+        float e0 = j == 0 ? el_bot : 1.5707963f * (float)(j - 1) / LAT;
+        float e1 = j == 0 ? 0.0f : 1.5707963f * (float)j / LAT;
+        float t0 = j == 0 ? 0.0f : sqrtf((float)(j - 1) / LAT), t1 = j == 0 ? 0.0f : sqrtf((float)j / LAT);
+        float c0[3], c1[3];
+        for (int k = 0; k < 3; k++) {
+            c0[k] = sky_hor[k] + (sky_zen[k] - sky_hor[k]) * t0;
+            c1[k] = sky_hor[k] + (sky_zen[k] - sky_hor[k]) * t1;
+        }
+        float r0 = SKY_R * cosf(e0), r1 = SKY_R * cosf(e1), y0 = eye[1] + SKY_R * sinf(e0), y1 = eye[1] + SKY_R * sinf(e1);
+        if (j == 0) { r0 = r1 = SKY_R; y0 = bot; y1 = eye[1]; }
+        for (int k = 0; k < LON; k++) {
+            float a0 = 6.2831853f * k / LON, a1 = 6.2831853f * (k + 1) / LON;
+            Vert q0 = { eye[0] + r0 * sinf(a0), y0, eye[2] + r0 * cosf(a0), c0[0], c0[1], c0[2] };
+            Vert q1 = { eye[0] + r0 * sinf(a1), y0, eye[2] + r0 * cosf(a1), c0[0], c0[1], c0[2] };
+            Vert q2 = { eye[0] + r1 * sinf(a1), y1, eye[2] + r1 * cosf(a1), c1[0], c1[1], c1[2] };
+            Vert q3 = { eye[0] + r1 * sinf(a0), y1, eye[2] + r1 * cosf(a0), c1[0], c1[1], c1[2] };
+            dome[n++] = q0; dome[n++] = q1; dome[n++] = q2;
+            dome[n++] = q0; dome[n++] = q2; dome[n++] = q3;
+        }
+    }
+    gl.Disable(GL_DEPTH_TEST);
+    gl.UseProgram(prog);
+    gl.UniformMatrix4fv(loc_mvp, 1, GL_FALSE, mvp);
+    gl.Uniform3f(loc_eye, eye[0], eye[1], eye[2]);
+    gl.Uniform3f(loc_fogr, 1e9f, 1.0f, 1.0f);                 /* exact colours: no fog, no night dimming */
+    gl.Uniform4f(loc_lite, 1, 0, 0, 0);
+    gl.BindVertexArray(vao);
+    gl.BindBuffer(GL_ARRAY_BUFFER, vbo);
+    gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(n * sizeof(Vert)), dome, GL_STREAM_DRAW);
+    gl.DrawArrays(GL_TRIANGLES, 0, n);
+    gl.BindVertexArray(0);
+    gl.Enable(GL_DEPTH_TEST);
+}
+
 /* The panorama on a cylinder around the eye: one pixel = 1 / FOCAL radian, as the road (the original scrolls it
  * twice as fast; in 3D it has to stay with the world), the horizon row on the eye's horizon; below it the
  * original's ground fill (colour 9) down to 45 degrees, so the far end of the ground meets it. */
 static void sky_draw(const float *mvp, const float *eye, const float *fog)
 {
+    float upp = SKY_R / FOCAL;                                 /* world height of one panorama row */
+    float top = eye[1] + (float)sky_hz * upp, bot = eye[1] + (float)(sky_hz - sky_h) * upp;
+    sky_dome(mvp, eye, sky_h > 0 ? bot : eye[1] - 0.05f * SKY_R);
     if (sky_h <= 0 || !sky_tex) return;
     gl.Disable(GL_DEPTH_TEST);
     const int N = 96;
-    float upp = SKY_R / FOCAL;                                 /* world height of one panorama row */
-    float top = eye[1] + (float)sky_hz * upp, bot = eye[1] + (float)(sky_hz - sky_h) * upp;
     /* ground fill (its own vertices: verts holds the road mesh) */
     static Vert fill[96 * 6];
     int nf = 0;
@@ -780,6 +867,9 @@ void r3d_scene_draw(const R3dView *v, int vw, int vh, bool mirror)
         lite[0] = 0.12f; lite[1] = 1.15f;
         fog_range[0] = 6000.0f; fog_range[1] = 20000.0f;
     }
+    if (sky_h <= 0 || !sky_base_set) r3d_sky_base(v->pal[0]);   /* no panorama (the Aqueduct): colour 0 */
+    sky_colours(sky_base);
+    sky[0] = sky_zen[0]; sky[1] = sky_zen[1]; sky[2] = sky_zen[2];
     gl.ClearColor(sky[0], sky[1], sky[2], 1);
     gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     if (!have_trk) return;

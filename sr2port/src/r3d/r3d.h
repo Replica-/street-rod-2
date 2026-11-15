@@ -61,6 +61,8 @@ void r3d_objects_set(const R3dObject *objs, int n);
 /* The original's sky / horizon panorama (road_draw_sky 3e66, 3cca), BGRA, w = 320 pixels per 320 / FOCAL radians
  * of view, horizon at row horizon_row; drawn as a cylinder around the camera. h = 0: no panorama. */
 void r3d_sky_upload(const uint32_t *bgra, int w, int h, int horizon_row);
+/* ENHANCED: the game's sky colour (0xRRGGBB; its pixels in the panorama are see-through): the gradient behind it */
+void r3d_sky_base(uint32_t rgb);
 
 typedef struct {
     float pos;          /* track position in segments: seg + substep / 64 */
