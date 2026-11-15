@@ -434,9 +434,9 @@ static Vert verts[MAX_VERTS];
 static int nv;
 
 /* a strip piece between track positions p0 and p1, lateral X0..X1, heights (above the road) h00 h01 at p0 and
- * h10 h11 at p1 */
-static void band(float p0, float p1, float X0, float X1, float h00, float h01, float h10, float h11,
-                 float r, float g, float b)
+ * h10 h11 at p1; k[4] scales the colour at its corners (p0 X0, p0 X1, p1 X1, p1 X0; NULL = 1) */
+static void band_k(float p0, float p1, float X0, float X1, float h00, float h01, float h10, float h11,
+                   float r, float g, float b, const float *k)
 {
     if (nv + 6 > MAX_VERTS) return;
     Vert v[4];
@@ -444,9 +444,55 @@ static void band(float p0, float p1, float X0, float X1, float h00, float h01, f
     track_point(p0, X1, h01, &v[1].x, &v[1].y, &v[1].z);
     track_point(p1, X1, h11, &v[2].x, &v[2].y, &v[2].z);
     track_point(p1, X0, h10, &v[3].x, &v[3].y, &v[3].z);
-    for (int k = 0; k < 4; k++) { v[k].r = r; v[k].g = g; v[k].b = b; }
+    for (int j = 0; j < 4; j++) {
+        float m = k ? k[j] : 1.0f;
+        v[j].r = fminf(r * m, 1.0f); v[j].g = fminf(g * m, 1.0f); v[j].b = fminf(b * m, 1.0f);
+    }
     verts[nv++] = v[0]; verts[nv++] = v[1]; verts[nv++] = v[2];
     verts[nv++] = v[0]; verts[nv++] = v[2]; verts[nv++] = v[3];
+}
+
+static void band(float p0, float p1, float X0, float X1, float h00, float h01, float h10, float h11,
+                 float r, float g, float b)
+{
+    band_k(p0, p1, X0, X1, h00, h01, h10, h11, r, g, b, NULL);
+}
+
+/* a small steady number 0..1 for (a, b) */
+static float hash01(int a, int b)
+{
+    unsigned h = (unsigned)a * 2654435761u ^ (unsigned)b * 40503u;
+    h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15;
+    return (float)(h & 0xFFFF) / 65535.0f;
+}
+
+/* ENHANCED: the hillsides and drop-offs lit: by their slope against a sun up on the left, lighter towards the top,
+ * with steady rock streaks along the slope (segment i) */
+static void hill(int i, float p0, float p1, float X0, float X1, float h00, float h01, float h10, float h11,
+                 float r, float g, float b)
+{
+    float a[3], bb[3], c[3];
+    track_point(p0, X0, h00, &a[0], &a[1], &a[2]);
+    track_point(p0, X1, h01, &bb[0], &bb[1], &bb[2]);
+    track_point(p1, X0, h10, &c[0], &c[1], &c[2]);
+    float u[3] = { bb[0] - a[0], bb[1] - a[1], bb[2] - a[2] }, w[3] = { c[0] - a[0], c[1] - a[1], c[2] - a[2] };
+    float n[3] = { u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0] };
+    float len = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+    float lit = 1.0f;
+    if (len > 0) {
+        if (n[1] < 0) len = -len;                              /* facing up */
+        const float L[3] = { -0.48f, 0.80f, 0.36f };
+        float d = (n[0] * L[0] + n[1] * L[1] + n[2] * L[2]) / len;
+        lit = 0.55f + 0.6f * (d > 0 ? d : 0);
+    }
+    float hs[4] = { h00, h01, h11, h10 }, k[4];
+    for (int j = 0; j < 4; j++) {
+        float t = fabsf(hs[j]) / 600.0f;
+        if (t > 1) t = 1;
+        float streak = 0.9f + 0.2f * hash01(i + (j == 2 || j == 3), j == 1 || j == 2);
+        k[j] = lit * (0.82f + 0.3f * t) * streak;
+    }
+    band_k(p0, p1, X0, X1, h00, h01, h10, h11, r, g, b, k);
 }
 
 /* the 16 colours of the live palette registers (R3dView.pal), and a colour by palette index */
@@ -469,7 +515,17 @@ static void build(int first, int last, int mode)
         edges(i + 1 < R3D_TRACK_N ? i + 1 : i, &xl1, &xr1);
         float xl = fminf(xl0, xl1), xr = fmaxf(xr0, xr1);
         int road = ((c & 0x10) && (!mul || i >= 0x3AD)) ? 15 : 1;
-        if (xr > xl) band(p0, p1, xl, xr, 0, 0, 0, 0, PC(road));
+        if (xr > xl) {
+            if (road == 1) {                                   /* ENHANCED: asphalt, darker at its edges */
+                float r = pal_rgb[1][0], g = pal_rgb[1][1], b = pal_rgb[1][2];
+                if (r + g + b < 0.45f) { r = 0.20f; g = 0.20f; b = 0.22f; }   /* the game's black road: dark grey */
+                float tone = (i / 3) & 1 ? 1.0f : 0.94f, mid = (xl + xr) * 0.5f;
+                const float ke[4] = { 0.72f * tone, 1.0f * tone, 1.0f * tone, 0.72f * tone };
+                const float kc[4] = { 1.0f * tone, 0.72f * tone, 0.72f * tone, 1.0f * tone };
+                band_k(p0, p1, xl, mid, 0, 0, 0, 0, r, g, b, ke);
+                band_k(p0, p1, mid, xr, 0, 0, 0, 0, r, g, b, kc);
+            } else band(p0, p1, xl, xr, 0, 0, 0, 0, PC(road));
+        }
         float sl = 0x5DC - w, sr = 0xCE4 + w;
         bool cross = c & 1;
         if (cross) {                                           /* intersection pavements (4322 cross path) */
@@ -525,12 +581,12 @@ static void build(int first, int last, int mode)
         float bl0 = trk.bl[i], bl1 = trk.bl[i1], br0 = trk.br[i], br1 = trk.br[i1];
         float fl = -(w - 0x177) * 4, frr = (w + 0x339) * 4;     /* far bank x (07e4 XFL / XFR) */
         if (bl0 != 0 || bl1 != 0) {
-            band(p0, p1, fl, gl, bl0, 0, bl1, 0, PC(14));
-            band(p0, p1, X_MID - FAR_X, fl, bl0, bl0, bl1, bl1, PC(14));
+            hill(i, p0, p1, fl, gl, bl0, 0, bl1, 0, PC(14));
+            hill(i, p0, p1, X_MID - FAR_X, fl, bl0, bl0, bl1, bl1, PC(14));
         } else band(p0, p1, X_MID - FAR_X, gl, 0, 0, 0, 0, PC(9));
         if (br0 != 0 || br1 != 0) {
-            band(p0, p1, gr_, frr, 0, br0, 0, br1, PC(14));
-            band(p0, p1, frr, X_MID + FAR_X, br0, br0, br1, br1, PC(14));
+            hill(i, p0, p1, gr_, frr, 0, br0, 0, br1, PC(14));
+            hill(i, p0, p1, frr, X_MID + FAR_X, br0, br0, br1, br1, PC(14));
         } else band(p0, p1, gr_, X_MID + FAR_X, 0, 0, 0, 0, PC(9));
     }
 }
