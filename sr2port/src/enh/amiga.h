@@ -11,6 +11,8 @@ bool amiga_init(bool enable);
 bool amiga_active(void);
 /* pic_get: bitmap bmp now holds picture id. */
 void amiga_note_pic(FarPtr bmp, s16 id);
+/* while pc: the pictures loaded are shown as the game's own (the PC title between the Amiga ones) */
+void amiga_pc_pictures(bool pc);
 /* around a blit (drv_blit / drv_blit_masked) of src onto dst: the full-colour pixels of what it draws */
 void amiga_blit_begin(FarPtr src, FarPtr dst, const Rect *r, bool masked);
 void amiga_blit_end(FarPtr src, FarPtr dst, const Rect *r);

@@ -2,6 +2,7 @@
  * hall_dat — port/spec/game_flow.md, FORMATS.md "SR2_DATA" (0001:3cc4, 1a21:0e82, 1a21:6180, 1a21:6e6a-71cc). */
 #include "game/flow.h"
 #include "game/race.h"
+#include "enh/amiga.h"
 
 #include <stdlib.h>
 #include <time.h>
@@ -36,6 +37,14 @@ void title_sequence(void)
     pic_free(3);
     drv_pal_normal();
     DSW(DS_g_mirror) = 0;
+    if (amiga_active()) {                             /* ENHANCED (--amiga): the PC title between the Amiga logo and title */
+        amiga_pc_pictures(true);
+        show_picture(1, -1);
+        pic_free(1);
+        amiga_pc_pictures(false);
+        wait_click_or_key(400);
+        drv_blinds(desc_planes(g_front()), desc_planes(g_back()));
+    }
     show_picture(1, -1);                              /* LIB1 #0 title, drawn off screen */
     pic_free(1);
     wait_click_or_key(400);

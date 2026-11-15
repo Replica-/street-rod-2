@@ -100,11 +100,15 @@ static struct { u16 seg, off; s16 id; } track[TRACK];
 static int track_next;
 
 static void car_forget(FarPtr bmp);
+static bool pc_pics;
+
+void amiga_pc_pictures(bool pc) { pc_pics = pc; }
 
 void amiga_note_pic(FarPtr bmp, s16 id)
 {
     if (!on) return;
     car_forget(bmp);                                          /* a car frame there is gone */
+    if (pc_pics) id = -1;                                     /* no full-colour version: the game's own */
     for (int i = 0; i < TRACK; i++)
         if (track[i].seg == bmp.seg && track[i].off == bmp.off) { track[i].id = id; return; }
     track[track_next].seg = bmp.seg;

@@ -38,6 +38,10 @@ PAINT = set(range(1, 10)) | set(range(33, 42))     # table 7: the red ramp 810..
 # PC pictures that are part of a full Amiga screen: the PC id -> (x, y, w, h) cut from the Amiga picture (outside it:
 # see-through)
 CROP = {3: (40, 40, 256, 97)}                       # the California Dreams logo, drawn at (40, 40) on the PC
+# pieces of the Amiga picture moved into the cut: PC id -> [((x, y, w, h) of the Amiga picture, (x, y) in the cut)];
+# rows from CUT_BLACK on are black (the logo: the tops of the Amiga's animation frames below it)
+PASTE = {3: [((210, 148, 68, 11), (180, 84))]}      # its "presents", where the PC has it (the Amiga's is lower down)
+CUT_BLACK = {3: 95}
 # the steering wheel's lower part (straight, turned left, turned right) of the three dashboards: the Amiga's 192 columns
 # lie at x 72 of the dashboard, the PC's 184 at x 80
 CROP.update({p: (8, 0, 184, 30) for p in (2072, 2073, 2074, 2021, 2023, 2024, 2077, 2076, 2075)})
@@ -177,9 +181,15 @@ def main():
             I = [I[(h - 1 - i // w) * w + w - 1 - i % w] if red(c) else c for i, c in enumerate(I)]
         if int(pid) in CROP:
             cx, cy, cw, ch = CROP[int(pid)]
-            I = [I[(cy + y) * w + cx + x] if 0 <= cy + y < h and 0 <= cx + x < w else -1
+            J = [I[(cy + y) * w + cx + x] if 0 <= cy + y < h and 0 <= cx + x < w else -1
                  for y in range(ch) for x in range(cw)]
-            w, h = cw, ch
+            for y in range(CUT_BLACK.get(int(pid), ch), ch):
+                J[y * cw:(y + 1) * cw] = [0] * cw
+            for (sx, sy, sw, sh), (dx, dy) in PASTE.get(int(pid), []):
+                for y in range(sh):
+                    for x in range(sw):
+                        J[(dy + y) * cw + dx + x] = I[(sy + y) * w + sx + x]
+            I, w, h = J, cw, ch
         if int(pid) in PAINT_PICS:
             for i, c in enumerate(I):
                 if i // w >= PAINT_ROWS and i % w and ((c & 31) in (6, 7) or p[c % len(p)] == STRAY):
