@@ -37,5 +37,6 @@ Token budget rules:
   `marked.png`, `request.txt` (one line per touch-up). Run `bash tools/mask_watch.sh` in the background: it prints every
   submission not in `work/edits/done.txt` (all touch-ups); action each touch-up in order, append the folder to done.txt, rerun.
   F12 in the game saves the whole window (side strips included) to `work/shots/` and opens it in the editor.
-  Edited pictures go to `sr2port/assets/gfx/` (same names as gfx/, e.g. `pic_1018.bmp`, `wide/garage_l.bmp`): the game
-  loads them before the generated gfx/ set (enh/amiga.c), the build copies them beside the exe, the release ships them.
+  Only pixels we made go in the repo, under `sr2port/assets/gfx/`: new pictures whole (`wide/garage_l.bmp`), edits to the
+  game's pictures as patches `<stem>@<x>,<y>.bmp` (alpha 0 = keep, e.g. `pic_1018@119,0.bmp`), applied over the
+  generated gfx/ picture (enh/amiga.c). Never commit a whole game picture. Build copies them beside the exe; release ships them.

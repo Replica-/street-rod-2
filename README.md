@@ -79,8 +79,9 @@ picture, and the car rolls in from the far left over them (see the screenshots a
 
 The strips were outpainted from the Amiga garage with [Fooocus](https://github.com/lllyasviel/Fooocus) and Python, then
 refined with exact mask prompting: the masks are drawn in a small editor (`tools/mask_editor.html`, served by
-`tools/mask_server.py`) and sent with a description to Claude, which makes each change. The finished pictures live in
-`sr2port/assets/gfx/` and ship with the game. Only the garage is done; the rest of the screens keep black side bars,
+`tools/mask_server.py`) and sent with a description to Claude, which makes each change. Only the pixels made this way
+are in the repository (`sr2port/assets/gfx/`: the strips, and small patches placed over the game's own pictures); they
+ship with the game. Only the garage is done; the rest of the screens keep black side bars,
 and I won't take this much further for now.
 
 ## Layout

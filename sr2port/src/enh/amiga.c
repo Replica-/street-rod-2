@@ -35,6 +35,39 @@ static char dir[1024];
 
 typedef struct { uint32_t *px; int w, h; bool tried; } Img;   /* 0xAARRGGBB; px NULL: none (or the game's own) */
 
+/* ENHANCED: hand-made patches for a picture, sr2port/assets/gfx/<stem>@<x>,<y>.bmp (only the pixels that were made,
+ * alpha 0 = keep the picture's): put over the picture at (x, y) */
+static void apply_patches(Img *im, const char *name)
+{
+    char dirp[1100], stem[64];
+    SDL_snprintf(dirp, sizeof dirp, "%sassets/gfx", SDL_GetBasePath() ? SDL_GetBasePath() : "");
+    const char *slash = strrchr(name, '/');
+    SDL_strlcpy(stem, slash ? slash + 1 : name, sizeof stem);
+    char *dot = strrchr(stem, '.');
+    if (dot) *dot = 0;
+    size_t sl = strlen(stem);
+    int count = 0;
+    char **files = SDL_GlobDirectory(dirp, NULL, 0, &count);
+    for (int i = 0; files && i < count; i++) {
+        int x0, y0;
+        if (strncmp(files[i], stem, sl) || files[i][sl] != '@' || SDL_sscanf(files[i] + sl + 1, "%d,%d", &x0, &y0) != 2) continue;
+        char path[1300];
+        SDL_snprintf(path, sizeof path, "%s/%s", dirp, files[i]);
+        SDL_Surface *ps = SDL_LoadBMP(path);
+        SDL_Surface *pc = ps ? SDL_ConvertSurface(ps, SDL_PIXELFORMAT_ARGB8888) : NULL;
+        if (ps) SDL_DestroySurface(ps);
+        if (!pc) continue;
+        for (int y = 0; y < pc->h; y++)
+            for (int x = 0; x < pc->w; x++) {
+                uint32_t v = ((uint32_t *)((uint8_t *)pc->pixels + (size_t)y * pc->pitch))[x];
+                int tx = x0 + x, ty = y0 + y;
+                if ((v >> 24) && tx >= 0 && ty >= 0 && tx < im->w && ty < im->h) im->px[ty * im->w + tx] = v;
+            }
+        SDL_DestroySurface(pc);
+    }
+    SDL_free(files);
+}
+
 /* a 32-bit picture file (an 8-bit one is the game's own picture: no full-colour version) */
 static bool load_img(Img *im, const char *name)
 {
@@ -60,6 +93,7 @@ static bool load_img(Img *im, const char *name)
     if (im->px)
         for (int y = 0; y < c->h; y++) memcpy(im->px + y * c->w, (uint8_t *)c->pixels + (size_t)y * c->pitch, (size_t)c->w * 4);
     SDL_DestroySurface(c);
+    if (im->px) apply_patches(im, name);
     return im->px != NULL;
 }
 
