@@ -20,6 +20,8 @@
 
 #define LOC          DSS(DS_location)             /* DS:1BC8: 1 garage, 2 street, 3 gas station, 5 newspaper, 6 Bob's */
 #define YOFF         DS_g_anim_yoff               /* DS:1C08 */
+/* the car-hop's top row at Bob's (0x52); ENHANCED (--amiga): 12 rows lower, on the Amiga picture's pavement */
+#define HOP_Y        (amiga_active() ? 0x52 + 12 : 0x52)
 
 static inline bool has_mask(FarPtr d) { return !far_is_null(desc_mask(d)); }
 static inline FarPtr planes_plus(FarPtr d, u16 n) { FarPtr p = desc_planes(d); p.off = (u16)(p.off + n); return p; }
@@ -127,7 +129,7 @@ void town_bg_save(void)
 {
     FarPtr a = arena_bitmap_alloc(0x28, 0x34, 0, 0);
     ds_far_wr(DS_town_bg, a);
-    Rect r = { (s16)desc_w(a), (s16)desc_h(a), 0x68, 0x52, 0, 0 };
+    Rect r = { (s16)desc_w(a), (s16)desc_h(a), 0x68, HOP_Y, 0, 0 };
     drv_blit(g_back(), a, &r, 1);
 }
 
@@ -397,8 +399,8 @@ static void carhop_strip(FarPtr d)
     FarPtr pg = g_page(2);
     bitmap_init(d, planes_plus(pg, (u16)(desc_stride(pg) * 0x46)), FAR_NULL, w, h, DSS(DS_driver_id) == -2 ? -2 : -1);
     FarPtr dp = desc_planes(d);
-    dp.off = (u16)(dp.off - 0xCD0);
-    ega_latch_copy(desc_planes(g_front()), dp, (s16)desc_stride(d), (s16)desc_h(d), 0, 0x52, 0x28);
+    dp.off = (u16)(dp.off - HOP_Y * 0x28);        /* (0xCD0 = 0x52 rows) */
+    ega_latch_copy(desc_planes(g_front()), dp, (s16)desc_stride(d), (s16)desc_h(d), 0, HOP_Y, 0x28);
     /* PORT: the non-VGA branch (screen_save_rect(0, 0x52, w, h, d)) is not ported */
 }
 
@@ -422,7 +424,7 @@ void carhop_anim(s16 mode, s16 opp)
     }
     if (opp != 0) {
         s16 c[4];
-        if (rect_clip_to_view(0, 0x52, (s16)desc_w(D), (s16)desc_h(D), c) != NULL) {
+        if (rect_clip_to_view(0, HOP_Y, (s16)desc_w(D), (s16)desc_h(D), c) != NULL) {
             s16 e[4] = { (s16)(c[2] - c[0]), (s16)(c[3] - c[1] + 1), (s16)(c[0] - DSS(DS_car_x)), (s16)(c[1] - DSS(DS_car_y)) };
             ov_pic = bitmap_extract(ds_far(DS_view_desc), e, 2);
             r.w = e[0]; r.h = e[1]; r.sx = 0; r.sy = 0; r.dx = c[0];
@@ -452,7 +454,7 @@ void carhop_anim(s16 mode, s16 opp)
     FarPtr frames[14];
     carhop_frames(frames, mode);
     FarPtr fb[1] = { arena_bitmap_alloc(0x28, 0x34, 1, 2) };   /* [bp-66h] */
-    u16 anim = sprite_scene_setup((s16)((mode == 0 ? 0xD8 : 0) + 0x68), 0x85, fb, 0, 1, bgs, bgc, DS_tc_rect);
+    u16 anim = sprite_scene_setup((s16)((mode == 0 ? 0xD8 : 0) + 0x68), HOP_Y + 0x33, fb, 0, 1, bgs, bgc, DS_tc_rect);
     memcpy(mp(DGROUP, DS_anim_script), mp(DGROUP, mode == 0 ? DS_CARHOP_SCRIPT0 : DS_CARHOP_SCRIPT1), 16);
     DSW((u16)(anim + 0x10)) = DS_anim_script;
     if (mode == 1) {
@@ -473,7 +475,7 @@ void carhop_anim(s16 mode, s16 opp)
     drv_anim_step(anim);
     memcpy(mp(DGROUP, DS_hop_dirty), mp(DGROUP, (u16)(DSW((u16)(anim + 0x12)) + 4)), 8);
     if (mode == 1) {
-        walker_anim(ds_far(DS_town_bg), 0, 0, 0x28, 0x34, 0x68, 0x52, 0xA8);
+        walker_anim(ds_far(DS_town_bg), 0, 0, 0x28, 0x34, 0x68, HOP_Y, 0xA8);
     } else {
         s16 w = (s16)desc_w(fb[0]);
         FarPtr t = arena_bitmap_alloc(w, 0x34, 1, 2);
@@ -481,7 +483,7 @@ void carhop_anim(s16 mode, s16 opp)
         drv_blit(ds_far(DS_town_bg), t, &q, 1);
         drv_blit_masked(fb[0], t, &q, 1);
         drv_blit_masked(a, t, &q, 0);
-        walker_anim(t, 0, 0, (s16)desc_w(t), 0x34, 0x68, 0x52, 0xA8);
+        walker_anim(t, 0, 0, (s16)desc_w(t), 0x34, 0x68, HOP_Y, 0xA8);
     }
     if (DSS(DS_driver_id) != -2) drv_copy_page(desc_planes(g_front()), desc_planes(g_back()));
     arena_reset_stacks();
