@@ -85,9 +85,12 @@ bool host_init(const char *dir, int window_scale, bool fullscreen)
     return true;
 }
 
+static void video_close(void);
+
 void host_shutdown(void)
 {
     if (gamepad) SDL_CloseGamepad(gamepad);
+    video_close();                                  /* developer aid: SR_VIDEO */
     audio_dump_close();
     if (audio) SDL_DestroyAudioStream(audio);
     r3d_shutdown();
@@ -400,10 +403,60 @@ static void snapshot(void)
     SDL_DestroySurface(s);
 }
 
+/* Developer aid: SR_VIDEO=file.mp4 - every presented picture to ffmpeg (on the PATH) at a steady 30 frames a second
+ * of real time (a picture shown longer is repeated), for a recording with SR_AUDIO_WAV beside it. */
+static FILE *video_pipe;
+static Uint64 video_start_ns, video_frames;
+static uint8_t *video_last;
+static int video_w, video_h;
+
+static void video_frame(void)
+{
+    static bool checked;
+    if (!checked) {
+        checked = true;
+        const char *path = SDL_getenv("SR_VIDEO");
+        if (!path || !*path) return;
+        uint8_t *px;
+        if (!r3d_read_pixels(&px, &video_w, &video_h)) { fprintf(stderr, "SR_VIDEO: needs the GL view\n"); return; }
+        char cmd[1400];
+        SDL_snprintf(cmd, sizeof cmd, "ffmpeg -loglevel error -y -f rawvideo -pix_fmt rgba -s %dx%d -framerate 30 -i - "
+                     "-vf vflip -c:v libx264 -preset veryfast -crf 16 -pix_fmt yuv420p \"%s\"", video_w, video_h, path);
+#ifdef _WIN32
+        video_pipe = _popen(cmd, "wb");
+#else
+        video_pipe = popen(cmd, "w");
+#endif
+        video_last = calloc((size_t)video_w * video_h, 4);
+        video_start_ns = SDL_GetTicksNS();
+        if (!video_pipe) fprintf(stderr, "SR_VIDEO: cannot start ffmpeg\n");
+    }
+    if (!video_pipe) return;
+    Uint64 due = (SDL_GetTicksNS() - video_start_ns) * 30 / SDL_NS_PER_SECOND;
+    size_t n = (size_t)video_w * video_h * 4;
+    for (; video_frames < due; video_frames++) fwrite(video_last, 1, n, video_pipe);   /* the picture shown until now */
+    uint8_t *px;
+    int w, h;
+    if (r3d_read_pixels(&px, &w, &h) && w == video_w && h == video_h) memcpy(video_last, px, n);
+}
+
+static void video_close(void)
+{
+    if (!video_pipe) return;
+    video_frame();
+#ifdef _WIN32
+    _pclose(video_pipe);
+#else
+    pclose(video_pipe);
+#endif
+    video_pipe = NULL;
+}
+
 static void present(void)
 {
     r3d_present(frame, frame_w, frame_h);
     snapshot();
+    video_frame();
 }
 
 static Uint64 last_present_ns;

@@ -52,12 +52,16 @@ void jukebox_menu(void)
             texts[n] = ds_put(&at, songs[i].name);
             song_of[n++] = songs[i].song;
         }
-    u16 play = ds_put(&at, "Play it");
+    u16 play = ds_put(&at, "Play it"), title_text = ds_put(&at, "Juke box"), title = 0, title_was = 0;
+    for (u16 q = DSW((u16)(DS_SCREENS + 2 * 7)), k = 0; k < 40 && DSW(q) != 0xFFFF; k++, q = (u16)(q + 0x12))
+        if (DSW((u16)(q + 2)) && !strcmp(ds_str(DSW((u16)(q + 2))), "Spare parts")) { title = q; break; }
+    if (title) { title_was = DSW((u16)(title + 2)); DSW((u16)(title + 2)) = title_text; }   /* the list's heading */
     memcpy(mp(DGROUP, DS_list_entries), texts, sizeof(u16) * (size_t)n);
     u16 e = screen_element(7, -3);
     DSW((u16)(e + 2)) = play;
     s16 r = list_box(7, 0, (const u16 *)mp(DGROUP, DS_list_entries), NULL, (s16)n);
     DSW((u16)(e + 2)) = DS_TXT_CHANGE;
+    if (title) DSW((u16)(title + 2)) = title_was;
     if (r != -3) return;                            /* Forget it */
     int song = song_of[list_selected()];
     if (song == 0) {                                /* the original toggle */

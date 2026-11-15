@@ -58,6 +58,8 @@ static void debug_prepare(bool with_car)
     DSW(DS_cur_car) = car;
     CARW(car, CR_GAS) = (u16)env_int("SR_DEBUG_GAS", 0xAA);       /* SR_DEBUG_GAS: a low tank for the gas station */
     car_setup(car, PLAYER);
+    if (getenv("SR_DEBUG_SWATCH"))                 /* SR_DEBUG_SWATCH=k: the car in swatch colour k (--amiga's paint job) */
+        amiga_paint_set(car, DSC((u16)(car + CR_COLOUR)), amiga_swatch_rgb(env_int("SR_DEBUG_SWATCH", 0)));
 }
 
 /* DEVELOPER AID SR_DEBUG_END=king|summer|broke|garage (called at the start of game_loop, which then skips the title, the

@@ -396,6 +396,22 @@ void r3d_present(const uint32_t *frame, int fw, int fh)
     SDL_GL_SwapWindow(win);
 }
 
+bool r3d_read_pixels(uint8_t **rgba, int *w, int *h)
+{
+    static uint8_t *buf;
+    static size_t cap;
+    if (!ctx || !fbo) return false;
+    size_t n = (size_t)fbo_w * fbo_h * 4;
+    if (n > cap) { free(buf); buf = malloc(n); cap = buf ? n : 0; }
+    if (!buf) return false;
+    gl.BindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+    gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+    gl.ReadPixels(0, 0, fbo_w, fbo_h, GL_RGBA, GL_UNSIGNED_BYTE, buf);
+    gl.BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    *rgba = buf; *w = fbo_w; *h = fbo_h;
+    return true;
+}
+
 bool r3d_save_bmp(const char *path)
 {
     if (!ctx || !fbo) return false;

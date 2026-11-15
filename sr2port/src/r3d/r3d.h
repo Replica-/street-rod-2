@@ -32,6 +32,8 @@ void r3d_letterbox(float w, float h, float *x, float *y, float *rw, float *rh);
 void r3d_present(const uint32_t *frame, int fw, int fh);
 /* Developer aid: the last presented picture (3D + frame) as a BMP. */
 bool r3d_save_bmp(const char *path);
+/* developer aid (SR_VIDEO): the presented picture as RGBA rows, bottom-up; false without the GL view */
+bool r3d_read_pixels(uint8_t **rgba, int *w, int *h);
 
 /* The race view state at one original frame (road_frame), in game units. r3d keeps the last two and draws the
  * blend for the display time, one original frame behind. */
