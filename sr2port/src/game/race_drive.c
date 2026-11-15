@@ -401,6 +401,7 @@ s16 race_run(void)
         }
     }
     amiga_hands(-1, 0);
+    amiga_opp_race_paint(-1, 0);                       /* ENHANCED (--amiga): the race is over: the game's colours */
     if (getenv("SR_TRACE")) fprintf(stderr, "trace: %ldms race_run end %d seg %d opp %d\n", (long)clock(), res, DSS(DS_seg), DSS(DS_opp_seg));   /* PORT: developer aid */
     arena_reset();
     DSW(DS_arena2_used) = 0;

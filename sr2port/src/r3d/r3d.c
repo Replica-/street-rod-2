@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "platform/ega.h"
 #include "r3d/gl.h"
 #include "r3d/scene.h"
 
@@ -211,6 +212,7 @@ void r3d_letterbox(float w, float h, float *x, float *y, float *rw, float *rh)
 /* ---------------------------------------------------------------- views (R1.2) */
 
 #define VIEW_LIVE_NS (300 * SDL_NS_PER_MS)
+#define VIEW_HOLD_NS ((Uint64)5000 * SDL_NS_PER_MS)        /* the last view stays while the game's fill is still on screen */
 
 void r3d_view_push(const R3dView *v)
 {
@@ -231,7 +233,10 @@ static int hist_at(int i) { return (views - 1 - i) % VIEW_HIST; }
 
 bool r3d_view_live(void)
 {
-    return ctx && !classic && views > 0 && SDL_GetTicksNS() - t_last < VIEW_LIVE_NS;
+    if (!ctx || classic || views == 0) return false;
+    Uint64 age = SDL_GetTicksNS() - t_last;
+    /* the race over (no more views): the last one until the game draws over its place (the bare fill otherwise) */
+    return age < VIEW_LIVE_NS || (age < VIEW_HOLD_NS && ega_view_fill_shown());
 }
 
 static float blend(float a, float b, float t, float snap)

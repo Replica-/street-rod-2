@@ -46,6 +46,85 @@ void ega_set_page_mask(int page, const u8 *mask)
     }
 }
 
+/* ENHANCED: the shown page's see-through area still holds the game's fill (colour 15, half of it): nothing drawn over the
+ * 3D view's place since */
+static bool fill_still_shown(int page, const u8 *mask)
+{
+    long n = 0, fill = 0;
+    for (int y = 0; y < 200; y++)
+        for (int x = 0; x < 320; x++)
+            if (mask[y * 320 + x]) {
+                u16 o = (u16)(page * 0x2000 + y * EGA_BYTES_PER_LINE + (x >> 3));
+                int bit = 7 - (x & 7);
+                n++;
+                fill += ((planes[0][o] & planes[1][o] & planes[2][o] & planes[3][o]) >> bit) & 1;
+            }
+    return n && fill * 2 >= n;                     /* (half: the results boxes over the view cover a quarter) */
+}
+
+/* ENHANCED: the mask of the shown page: its own, or (a page without one: the race's last frame copied there, the
+ * results drawn over it) the one of the race page shown last; *borrowed then */
+static const u8 *last_mask;
+
+static const u8 *shown_mask(int page, bool *borrowed)
+{
+    *borrowed = false;
+    if (page >= 4) return NULL;
+    if (page_mask[page]) return page_mask[page];
+    *borrowed = last_mask != NULL;
+    return last_mask;
+}
+
+/* ENHANCED: colour-15 pixels of the see-through area that are not the fill: small separate pieces (text drawn in
+ * colour 15 over the view, e.g. the results boxes) stay drawn */
+#define TEXT_PIECE 64
+static u8 not_fill[320 * 200];
+
+static int colour_at(int page, int x, int y)
+{
+    u16 o = (u16)(page * 0x2000 + y * EGA_BYTES_PER_LINE + (x >> 3));
+    int bit = 7 - (x & 7);
+    return (planes[0][o] >> bit & 1) | (planes[1][o] >> bit & 1) << 1 | (planes[2][o] >> bit & 1) << 2 |
+           (planes[3][o] >> bit & 1) << 3;
+}
+
+static void mark_not_fill(int page, const u8 *mask)
+{
+    static u8 seen[320 * 200];
+    static int stack[320 * 200], piece[320 * 200];
+    memset(not_fill, 0, sizeof not_fill);
+    memset(seen, 0, sizeof seen);
+    for (int i = 0; i < 320 * 200; i++) {
+        if (seen[i] || !mask[i] || colour_at(page, i % 320, i / 320) != 15) continue;
+        int sp = 0, n = 0;
+        stack[sp++] = i;
+        seen[i] = 1;
+        while (sp) {
+            int k = stack[--sp], x = k % 320, y = k / 320;
+            piece[n++] = k;
+            const int nb[4] = { x > 0 ? k - 1 : -1, x < 319 ? k + 1 : -1, y > 0 ? k - 320 : -1, y < 199 ? k + 320 : -1 };
+            for (int d = 0; d < 4; d++) {
+                int q = nb[d];
+                if (q < 0 || seen[q] || !mask[q] || colour_at(page, q % 320, q / 320) != 15) continue;
+                seen[q] = 1;
+                stack[sp++] = q;
+            }
+        }
+        if (n < TEXT_PIECE)
+            for (int j = 0; j < n; j++) not_fill[piece[j]] = 1;
+    }
+}
+
+bool ega_view_fill_shown(void)
+{
+    int page = start_addr / 0x2000;
+    bool borrowed;
+    const u8 *m = shown_mask(page, &borrowed);
+    int black = 0;                                  /* the game blacking the screen out between screens */
+    for (int i = 0; i < 16; i++) black += ((palette_reg[i] & 7) | (palette_reg[i] >> 1 & 8)) == 0;
+    return m && line_compare > 0 && black < 8 && fill_still_shown(page, m);
+}
+
 /* ENHANCED: a register switched from a colour to black (the game blanking a screen before it leaves): the full-colour
  * pixels (platform/shadow.h) go black there too */
 static bool blanked[16];
@@ -61,19 +140,16 @@ static bool compose(u32 *xrgb)
     }
     if (sh_enabled()) sh_paint_regs(rgb, palette_reg);   /* ENHANCED (--amiga): the car's own paint colour */
     int page = start_addr / 0x2000;
-    const u8 *mask = (page < 4 && r3d_view_live()) ? page_mask[page] : NULL;
+    bool borrowed;
+    const u8 *mask = r3d_view_live() ? shown_mask(page, &borrowed) : NULL;
+    if (mask && !borrowed) last_mask = mask;
     bool fill_only = false;                 /* the page changed since: see-through only where the fill (15) still is */
-    if (mask && page_checksum(page) != page_sum[page]) {
-        long n = 0, fill = 0;               /* something drawn over the view (shown), or a new screen (no mask) */
-        for (int y = 0; y < 200; y++)
-            for (int x = 0; x < 320; x++)
-                if (mask[y * 320 + x]) {
-                    u16 o = (u16)(page * 0x2000 + y * EGA_BYTES_PER_LINE + (x >> 3));
-                    int bit = 7 - (x & 7);
-                    n++;
-                    fill += ((planes[0][o] & planes[1][o] & planes[2][o] & planes[3][o]) >> bit) & 1;
-                }
-        if (n && fill * 10 >= n * 8) fill_only = true;
+    if (mask && (borrowed || page_checksum(page) != page_sum[page])) {
+        /* something drawn over the view (shown), or a new screen (no mask) */
+        if (fill_still_shown(page, mask)) {
+            fill_only = true;
+            mark_not_fill(page, mask);
+        }
         else mask = NULL;
     }
     /* ENHANCED (--amiga): the full-colour pixels, unless the screen is blanked (most registers black) */
@@ -105,7 +181,8 @@ static bool compose(u32 *xrgb)
                               (((h >> 8 & 255) * a + (px >> 8 & 255) * (255 - a)) / 255) << 8 |
                               ((h & 255) * a + (px & 255) * (255 - a)) / 255;
                 }
-                if (m && m[b * 8 + 7 - bit] && (!fill_only || c == 15)) px &= 0x00FFFFFFu;
+                if (m && m[b * 8 + 7 - bit] && (!fill_only || (c == 15 && !not_fill[y * 320 + b * 8 + 7 - bit])))
+                    px &= 0x00FFFFFFu;
                 *out++ = px;
             }
         }
