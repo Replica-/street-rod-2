@@ -794,9 +794,12 @@ static void pair_paint(int rd, int rl, u32 rgb, int index)
 void amiga_paint_preview(u32 rgb, int index) { pair_paint(6, 7, rgb, index); }
 
 /* An opponent's own colour: one of the swatch colours (not the near-black), by the opponent's number (consecutive
- * opponents get different ones), instead of the game's six. */
+ * opponents get different ones), instead of the game's six; the King (21) black. */
+#define OPP_KING 0x15
+#define KING_RGB 0x282830           /* the swatch's black: its shading still shows */
 static u32 opp_rgb(int opp)
 {
+    if (opp == OPP_KING) return KING_RGB;
     u32 c[AMIGA_SWATCH_N];
     int n = 0;
     for (int i = 0; i < AMIGA_SWATCH_N; i++)
