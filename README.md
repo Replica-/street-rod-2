@@ -28,12 +28,14 @@ With the Amiga graphics and the 3D race view (both the default):
 
 | | |
 |---|---|
-| ![The garage](docs/screenshots/garage.png) | ![Burger's Bungalow](docs/screenshots/burgers.png) |
-| The garage | Burger's Bungalow |
-| ![Cruising in town](docs/screenshots/cruise.png) | ![Drag race](docs/screenshots/drag.png) |
-| Cruising in town | Drag race |
-| ![Mulholland drive](docs/screenshots/mulholland.png) | ![Aqueduct race](docs/screenshots/aqueduct.png) |
-| Mulholland drive | Aqueduct race |
+| ![The garage](docs/screenshots/garage.png) | ![The garage in widescreen](docs/screenshots/garage_widescreen.png) |
+| The garage | The garage in widescreen |
+| ![Burger's Bungalow](docs/screenshots/burgers.png) | ![Cruising in town](docs/screenshots/cruise.png) |
+| Burger's Bungalow | Cruising in town |
+| ![Drag race](docs/screenshots/drag.png) | ![Mulholland drive](docs/screenshots/mulholland.png) |
+| Drag race | Mulholland drive |
+| ![Aqueduct race](docs/screenshots/aqueduct.png) | |
+| Aqueduct race | |
 
 ## Running
 
@@ -73,9 +75,7 @@ The game logic stays the original's. Enhancements sit on top, and the original l
 ### Widescreen (experiment)
 
 Widescreen works: on a wide window or screen the garage fills the side bars with painted strips that continue the
-picture, and the car rolls in from the far left over them.
-
-![The garage in widescreen](docs/screenshots/garage_widescreen.png)
+picture, and the car rolls in from the far left over them (see the screenshots above).
 
 The strips were outpainted from the Amiga garage with [Fooocus](https://github.com/lllyasviel/Fooocus) and Python, then
 refined with exact mask prompting: the masks are drawn in a small editor (`tools/mask_editor.html`, served by
