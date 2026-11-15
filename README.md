@@ -44,25 +44,18 @@ release and the Amiga disks from [Street Rod Online](https://www.streetrodonline
 progress bar, makes the Amiga picture set (`gfx\`) and starts the game. When the files are there it goes straight
 into the game. Nothing else to install (no Python).
 
-Build (MSYS2 mingw64, see `sr2port/PORTING.md`), then either start
-the launcher, **`Street Rod 2.exe`** (built beside `sr2port.exe` when wxWidgets 3.2 is installed: game folder,
-graphics, sound AdLib / Normal, the game's switches, window size, full screen), or run the port directly:
+Build (MSYS2 UCRT64, see `sr2port/PORTING.md`), then start the launcher, **`Street Rod 2.exe`** (built beside
+`sr2port.exe` when wxWidgets 3.2 is installed: game folder, graphics, sound, window size, full screen), or
+`sr2port.exe` directly.
 
-```text
-sr2port.exe --game-dir Game speaker      (PC speaker instead of AdLib)
-sr2port.exe --game-dir Game              (VGA and AdLib; the original's video and sound menus are not shown)
-```
+## Enhancements
 
-## Enhancements (work in progress)
+The game logic stays the original's. Enhancements sit on top, and the original look stays available:
 
-The game logic stays the original's. Enhancements sit on top, each behind a switch, with the original as the
-fallback (`--classic`):
-
-- **3D race view** (default): the races and town drives in 3D with smooth motion, the town's houses and
-  overhead signs, 4x anti-aliasing. `--classic` brings back the original 2D view; `--rain`, `--dusk` and
-  `--night` add weather and time of day.
+- **3D race view**: the races and town drives in 3D with smooth motion, the town's houses and overhead signs,
+  shaded roads, hills and trees, a night sky with stars, 4x anti-aliasing; optional weather and time of day.
 - **Smooth 2D animation**: the game's screen refresh follows the display (no judder on 60 / 120 Hz screens).
-- **Amiga graphics** (the default; `--pc` for the PC pictures, WIP): the Amiga release's art in full colour: title, garage, gas station,
+- **Amiga graphics**: the Amiga release's art in full colour: title, garage, gas station,
   Burger's Bungalow, newspaper, engine screens, portraits, the cars (Amiga bodies, customisation pieces
   and turning wheels, repainted in the car's colour) and the race dashboards (the driver's hands turning
   the wheel). The paint job adds a swatch of 20 colours; the colours chosen are kept beside the saved game
@@ -75,17 +68,14 @@ fallback (`--classic`):
   `python tools/amiga_export.py` makes the same folder. `gfx\` is game art and is not in git.
 - **Music** (AdLib): the playlist's songs follow each other without the original's ~2 minute silence, and
   the garage juke box opens a menu: "Squelch it !" / "Catch some tunes" or pick one of the six songs
-  (including `MSR20.MUS`, which the game never plays). `--classic` keeps the original's on / off toggle.
-- Copy protection question skipped (`--protection` shows it).
-
-Known WIP: small PC pieces the game pastes onto Amiga backgrounds (garage lamp, floor papers), text boxes
-keeping the game's white behind their text, and the race graphics still being the PC ones.
+  (including `MSR20.MUS`, which the game never plays).
+- Copy protection question skipped.
 
 ## Layout
 
 ```text
-Game\        the installed DOS game, and your Amiga disks for --amiga (not in git)
-gfx\         the picture set for --amiga, made by tools\amiga_export.py (not in git)
+Game\        the DOS game and the Amiga disks, downloaded at the first start (not in git)
+gfx\         the Amiga picture set, made at the first start (not in git)
 _tools\      junction to Ghidra + JDK (shared with the other ports, not in git)
 tools\       reverse-engineering scripts (Python, Ghidra)
 port\        RE guide, function indexes, SR1 matches, symbols, specs (port\spec), formats (port\formats)
