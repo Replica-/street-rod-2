@@ -466,6 +466,27 @@ static float hash01(int a, int b)
     return (float)(h & 0xFFFF) / 65535.0f;
 }
 
+/* ENHANCED: grass from the road's edge (X xn) out to X xf: soft patches (a steady tone per corner, blended),
+ * a darker verge by the road, the asphalt's alternating tone along the road */
+static void grass(int i, float p0, float p1, float xn, float xf, float r, float g, float b)
+{
+    const float off[5] = { 0, 160, 600, 1800, 1e9f };          /* lateral breaks out from the road */
+    float dir = xf < xn ? -1.0f : 1.0f, span = fabsf(xf - xn);
+    float tone0 = (i / 3) & 1 ? 1.0f : 0.93f, tone1 = ((i + 1) / 3) & 1 ? 1.0f : 0.93f;
+    for (int j = 0; j < 4 && off[j] < span; j++) {
+        float a = xn + dir * off[j], e = xn + dir * fminf(off[j + 1], span);
+        float k0a = j == 0 ? 0.70f : 0.74f + 0.32f * hash01(i, j + 17 * (dir > 0));
+        float k1a = j == 0 ? 0.70f : 0.74f + 0.32f * hash01(i + 1, j + 17 * (dir > 0));
+        float k0e = 0.74f + 0.32f * hash01(i, j + 1 + 17 * (dir > 0));
+        float k1e = 0.74f + 0.32f * hash01(i + 1, j + 1 + 17 * (dir > 0));
+        float X0 = fminf(a, e), X1 = fmaxf(a, e);
+        bool flip = e < a;                                     /* corners: p0 X0, p0 X1, p1 X1, p1 X0 */
+        const float k[4] = { (flip ? k0e : k0a) * tone0, (flip ? k0a : k0e) * tone0,
+                             (flip ? k1a : k1e) * tone1, (flip ? k1e : k1a) * tone1 };
+        band_k(p0, p1, X0, X1, 0, 0, 0, 0, r, g, b, k);
+    }
+}
+
 /* ENHANCED: the hillsides and drop-offs lit: by their slope against a sun up on the left, lighter towards the top,
  * with steady rock streaks along the slope (segment i) */
 static void hill(int i, float p0, float p1, float X0, float X1, float h00, float h01, float h10, float h11,
@@ -583,11 +604,11 @@ static void build(int first, int last, int mode)
         if (bl0 != 0 || bl1 != 0) {
             hill(i, p0, p1, fl, gl, bl0, 0, bl1, 0, PC(14));
             hill(i, p0, p1, X_MID - FAR_X, fl, bl0, bl0, bl1, bl1, PC(14));
-        } else band(p0, p1, X_MID - FAR_X, gl, 0, 0, 0, 0, PC(9));
+        } else grass(i, p0, p1, gl, X_MID - FAR_X, PC(9));
         if (br0 != 0 || br1 != 0) {
             hill(i, p0, p1, gr_, frr, 0, br0, 0, br1, PC(14));
             hill(i, p0, p1, frr, X_MID + FAR_X, br0, br0, br1, br1, PC(14));
-        } else band(p0, p1, gr_, X_MID + FAR_X, 0, 0, 0, 0, PC(9));
+        } else grass(i, p0, p1, gr_, X_MID + FAR_X, PC(9));
     }
 }
 
