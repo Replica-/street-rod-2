@@ -17,7 +17,7 @@
 
 static const struct { int song; const char *name; } songs[] = {
     { 1, "Title theme" }, { 2, "Tune MSR2" }, { 3, "Tune MSR24" },
-    { 4, "Ending tune" }, { 5, "Pause tune" }, { 6, "Unused MSR20" },
+    { 4, "Ending tune" },
 };
 #define NSONGS (int)(sizeof songs / sizeof songs[0])
 

@@ -67,8 +67,7 @@ The game logic stays the original's. Enhancements sit on top, and the original l
   picture by id, Amiga where there is one, else PC; cars, wheels); nothing is converted while playing.
   `python tools/amiga_export.py` makes the same folder. `gfx\` is game art and is not in git.
 - **Music** (AdLib): the playlist's songs follow each other without the original's ~2 minute silence, and
-  the garage juke box opens a menu: "Squelch it !" / "Catch some tunes" or pick one of the six songs
-  (including `MSR20.MUS`, which the game never plays).
+  the garage juke box opens a menu: "Squelch it !" / "Catch some tunes" or pick one of the songs.
 - Copy protection question skipped.
 
 ## Layout
