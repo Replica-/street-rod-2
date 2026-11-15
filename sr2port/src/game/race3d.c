@@ -462,8 +462,13 @@ static void push_sky(void)
             if (sky[x] == rgb[c]) { cnt[c]++; break; }
     for (int c = 1; c < 16; c++) if (cnt[c] > cnt[top]) top = c;
     for (int c = 0; c < 16; c++) key[c] = rgb[c];
-    for (int x = 0; x < 320; x++)
-        for (int k = 0; k < n && sky[k * 320 + x] == key[top]; k++) sky[k * 320 + x] &= 0x00FFFFFFu;
+    for (int x = 0; x < 320; x++)                          /* (specks, the game's stars, do not end a column) */
+        for (int k = 0; k < n; k++) {
+            int solid = 0;
+            while (solid < 4 && k + solid < n && sky[(k + solid) * 320 + x] != key[top]) solid++;
+            if (solid >= 4 || (solid && k + solid >= n)) break;
+            if (sky[k * 320 + x] == key[top]) sky[k * 320 + x] &= 0x00FFFFFFu;
+        }
     r3d_sky_base(key[top] & 0xFFFFFFu);
     r3d_sky_upload(sky, 320, n, horizon);
 }
