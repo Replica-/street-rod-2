@@ -6,6 +6,7 @@
  *   0001:9b26 opponent_select   0001:9b78 opp_known_list      0001:9be0 opponent_search 0001:9c8e challenge_accept
  *   0001:9e3c challenge         0001:a270 bob_hotspots        0001:a3ba opponent_car_view
  *   0001:a4ea bob_sign_draw     0001:a588 bob_screen_draw     0001:a626 bob_drive_in    0001:a9fc jail */
+#include "enh/amiga.h"
 #include "game/race_int.h"
 #include "game/race.h"
 
@@ -207,6 +208,7 @@ static void opponent_select(s16 i, s16 mode, s16 flag)
 {
     opponent_load(i);
     set_paint_palette(DSS(DS_opp_paint));
+    if (amiga_active()) amiga_paint_preview(0, DSS(DS_opp_paint));   /* ENHANCED (--amiga): an opponent's car: its game colour */
     if (flag == 1) DSW(DS_car_pass) = 1;
     if (flag == 2 && DSS(DS_opp_index) == 0x15) DSW(DS_car_pass) = king_status() == 1;
     opponent_show(mode);

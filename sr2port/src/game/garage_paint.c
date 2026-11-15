@@ -21,7 +21,12 @@ void set_paint_palette(s16 colour)
         DSB(DS_GS_PAL_SHADOW2) = DSB(p);
         DSB((u16)(DS_GS_PAL_SHADOW2 + 1)) = DSB((u16)(p + 1));
     }
-    if (amiga_active() && gs_cur_car() != 0) amiga_paint_apply(gs_cur_car(), colour);   /* ENHANCED: a swatch colour */
+    /* ENHANCED (--amiga): the player's car's own colour shows its swatch colour; any other (an opponent's car at
+     * Burger's, a colour browsed) the game's */
+    if (amiga_active()) {
+        if (gs_cur_car() != 0 && colour == DSC((u16)(gs_cur_car() + CR_COLOUR))) amiga_paint_apply(gs_cur_car(), colour);
+        else amiga_paint_preview(0, colour);
+    }
 }
 
 /* ENHANCED (--amiga): the swatch's clicks come back as SWATCH_CODE + index */

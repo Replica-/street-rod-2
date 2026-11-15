@@ -11,6 +11,7 @@
  *   jail                           the jail screen (jail).
  * The program exits afterwards. Combine with SDL_VIDEO_DRIVER=dummy SR_SNAPSHOT_DIR=... SR_KEYS=... (host.h): the
  * autopilot of the demo drives when the "demo" switch is given, e.g. SR_KEYS="1:03" for the sound menu. */
+#include "enh/amiga.h"
 #include "game/race_int.h"
 #include "game/race.h"
 
@@ -97,6 +98,7 @@ bool race_debug_main(void)
         DSS(DS_road_mode) = !strcmp(mode, "drag") ? 1 : !strcmp(mode, "mulholland") ? 0x10 : 8;
         opponent_load(env_int("SR_DEBUG_OPP", 0));
         set_paint_palette(DSS(DS_opp_paint));
+        if (amiga_active()) amiga_paint_preview(0, DSS(DS_opp_paint));   /* ENHANCED (--amiga): an opponent's car: its game colour */
         DSW(DS_bet_kind) = 0;
         DSW(DS_bet_amount) = 0;
         DSW(DS_bet_button) = 1;
